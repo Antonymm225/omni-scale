@@ -390,7 +390,11 @@ function DashboardLineChart({
       const xRatio = Math.min(Math.max((t - dayStart.getTime()) / totalRangeMs, 0), 1);
       const x = padding.left + xRatio * chartW;
 
-      const spendY = padding.top + (1 - Number(d.spend_usd || 0) / leftMax) * chartH;
+      const rawSpendY = padding.top + (1 - Number(d.spend_usd || 0) / leftMax) * chartH;
+      const spendY =
+        Number(d.spend_usd || 0) > 0
+          ? Math.min(rawSpendY, height - padding.bottom - 2)
+          : rawSpendY;
       const leadsY = padding.top + (1 - Number(d.leads_count || 0) / leftMax) * chartH;
       const cprY =
         d.cost_per_result_usd == null
@@ -541,8 +545,15 @@ function DashboardLineChart({
         0
       </text>
 
-      {spendPath ? <path d={spendPath} fill="none" stroke="#1d4ed8" strokeWidth="2" /> : null}
-      {leadsPath ? <path d={leadsPath} fill="none" stroke="#10b981" strokeWidth="2" /> : null}
+      {spendPath ? (
+        <>
+          <path d={spendPath} fill="none" stroke="#ffffff" strokeWidth="6" strokeLinecap="round" />
+          <path d={spendPath} fill="none" stroke="#1d4ed8" strokeWidth="3.2" strokeLinecap="round" />
+        </>
+      ) : null}
+      {leadsPath ? (
+        <path d={leadsPath} fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" />
+      ) : null}
       {cprPath ? <path d={cprPath} fill="none" stroke="#7c3aed" strokeWidth="2" /> : null}
 
       {spendPath ? (
