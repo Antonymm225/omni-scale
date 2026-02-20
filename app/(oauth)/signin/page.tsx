@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -145,12 +145,16 @@ export default function SignIn() {
 
           <p className="text-xs text-center text-slate-400 leading-relaxed">
             Al iniciar sesion, aceptas nuestros{" "}
-            <a href="#" className="underline hover:text-black">
-              Terminos
+            <a href="/terms-and-conditions" className="underline hover:text-black">
+              Terminos y Condiciones
             </a>{" "}
             y{" "}
-            <a href="#" className="underline hover:text-black">
+            <a href="/privacy-policy" className="underline hover:text-black">
               Politica de Privacidad
+            </a>{" "}
+            y{" "}
+            <a href="/data-deletion-policy" className="underline hover:text-black">
+              Politica de Eliminacion de Datos
             </a>
             .
           </p>

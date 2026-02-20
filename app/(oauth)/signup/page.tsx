@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
@@ -11,7 +11,7 @@ export default function SignUp() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  // ✅ NUEVO: estado para mostrar mensaje bonito (sin alert)
+  // âœ… NUEVO: estado para mostrar mensaje bonito (sin alert)
   const [emailSent, setEmailSent] = useState(false);
 
   const handleSignup = async (e: any) => {
@@ -33,7 +33,7 @@ export default function SignUp() {
     if (error) {
       alert(error.message);
     } else {
-      // ✅ NUEVO: mostramos mensaje dentro de la misma página
+      // âœ… NUEVO: mostramos mensaje dentro de la misma pÃ¡gina
       setEmailSent(true);
     }
   };
@@ -57,7 +57,7 @@ export default function SignUp() {
               OMNI Scale
             </h1>
             <p className="text-slate-300 text-lg leading-relaxed">
-              Testea, escala y automatiza tus campañas — 10x más rápido.
+              Testea, escala y automatiza tus campaÃ±as â€” 10x mÃ¡s rÃ¡pido.
             </p>
           </div>
 
@@ -67,7 +67,7 @@ export default function SignUp() {
               icon="sparkles"
               text="Identifica los anuncios con mejor rendimiento"
             />
-            <Feature icon="chart" text="Las campañas aprenden y evolucionan" />
+            <Feature icon="chart" text="Las campaÃ±as aprenden y evolucionan" />
           </div>
         </div>
       </div>
@@ -80,11 +80,11 @@ export default function SignUp() {
               Crea tu cuenta
             </h2>
             <p className="text-slate-600 text-sm">
-              Comienza tu prueba gratuita de 7 días
+              Comienza tu prueba gratuita de 7 dÃ­as
             </p>
           </div>
 
-          {/* ✅ NUEVO: Mensaje bonito dentro de la página (sin quitar nada del layout) */}
+          {/* âœ… NUEVO: Mensaje bonito dentro de la pÃ¡gina (sin quitar nada del layout) */}
           {emailSent && (
             <div className="border border-green-200 bg-green-50 rounded-xl p-4 flex gap-3 items-start">
               <div className="text-green-600 mt-0.5 shrink-0">
@@ -105,10 +105,10 @@ export default function SignUp() {
 
               <div className="text-sm">
                 <p className="font-semibold text-green-700">
-                  ¡Listo! Revisa tu correo para verificar tu cuenta
+                  Â¡Listo! Revisa tu correo para verificar tu cuenta
                 </p>
                 <p className="text-slate-600 mt-1">
-                  Te enviamos un enlace de confirmación.
+                  Te enviamos un enlace de confirmaciÃ³n.
                 </p>
               </div>
             </div>
@@ -155,7 +155,7 @@ export default function SignUp() {
             {/* EMAIL */}
             <div>
               <label className="text-sm font-medium text-slate-700">
-                Correo electrónico
+                Correo electrÃ³nico
               </label>
               <input
                 type="email"
@@ -169,20 +169,20 @@ export default function SignUp() {
             {/* PASSWORD */}
             <div>
               <label className="text-sm font-medium text-slate-700">
-                Contraseña
+                ContraseÃ±a
               </label>
               <input
                 type="password"
-                placeholder="Crea una contraseña"
+                placeholder="Crea una contraseÃ±a"
                 required
                 minLength={8}
                 pattern="^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d@$!%*?&]{8,}$"
-                title="Debe tener al menos 8 caracteres, incluir una letra y un número"
+                title="Debe tener al menos 8 caracteres, incluir una letra y un nÃºmero"
                 onChange={(e) => setPassword(e.target.value)}
                 className="mt-1 w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-black"
               />
               <p className="text-xs text-slate-400 mt-1">
-                Mínimo 8 caracteres, al menos una letra y un número.
+                MÃ­nimo 8 caracteres, al menos una letra y un nÃºmero.
               </p>
             </div>
 
@@ -196,21 +196,25 @@ export default function SignUp() {
 
           {/* SIGN IN LINK */}
           <div className="text-center text-sm text-slate-600">
-            ¿Ya tienes una cuenta?{" "}
+            Â¿Ya tienes una cuenta?{" "}
             <a href="/signin" className="font-medium text-black hover:underline">
-              Inicia sesión
+              Inicia sesiÃ³n
             </a>
           </div>
 
           {/* TERMS */}
           <p className="text-xs text-center text-slate-400 leading-relaxed">
             Al registrarte, aceptas nuestros{" "}
-            <a href="#" className="underline hover:text-black">
-              Términos
+            <a href="/terms-and-conditions" className="underline hover:text-black">
+              Terminos y Condiciones
             </a>{" "}
             y{" "}
-            <a href="#" className="underline hover:text-black">
-              Política de Privacidad
+            <a href="/privacy-policy" className="underline hover:text-black">
+              Politica de Privacidad
+            </a>{" "}
+            y{" "}
+            <a href="/data-deletion-policy" className="underline hover:text-black">
+              Politica de Eliminacion de Datos
             </a>
             .
           </p>
@@ -269,3 +273,4 @@ function Feature({ icon, text }: { icon: string; text: string }) {
     </div>
   );
 }
+

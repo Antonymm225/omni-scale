@@ -29,8 +29,21 @@ export default function Home() {
             type="button"
             className="inline-flex items-center rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 lg:hidden"
             onClick={() => setMenuOpen((prev) => !prev)}
+            aria-label="Abrir menu"
           >
-            Menu
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              className="h-5 w-5"
+              aria-hidden="true"
+            >
+              <path d="M3 6h18" />
+              <path d="M3 12h18" />
+              <path d="M3 18h18" />
+            </svg>
           </button>
 
           <div className="hidden items-center gap-8 lg:flex">
@@ -238,6 +251,17 @@ export default function Home() {
         <div className="mx-auto w-full max-w-6xl px-4 py-6 text-center text-xs text-slate-600 sm:px-6 lg:px-8">
           <p>Derechos reservados</p>
           <p className="mt-1">OMNI AGENCIA S.A.C - RUC 20612101648</p>
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+            <a href="/terms-and-conditions" className="underline hover:text-slate-900">
+              Terminos y Condiciones
+            </a>
+            <a href="/privacy-policy" className="underline hover:text-slate-900">
+              Politica de Privacidad
+            </a>
+            <a href="/data-deletion-policy" className="underline hover:text-slate-900">
+              Politica de Eliminacion de Datos
+            </a>
+          </div>
         </div>
       </footer>
     </div>
