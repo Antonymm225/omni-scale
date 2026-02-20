@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { supabase } from "../../lib/supabaseClient";
 
 type DashboardMetrics = {
@@ -40,6 +40,7 @@ type ChartTooltip = {
   markerX: number;
   markerY: number;
   markerColor: string;
+  metric: "spend" | "results" | "cpr";
   label: string;
   spendUsd: number;
   leads: number;
@@ -247,9 +248,11 @@ export default function DashboardPage() {
                     style={{ left: `${tooltip.x}px`, top: `${tooltip.y}px` }}
                   >
                     <p className="font-semibold text-white">{tooltip.label}</p>
-                    <p>Gasto: {formatUsd(tooltip.spendUsd)}</p>
-                    <p>Resultados: {tooltip.leads}</p>
-                    <p>Costo/resultado: {tooltip.cpr != null ? formatUsd(tooltip.cpr) : "-"}</p>
+                    {tooltip.metric === "spend" ? <p>Gasto: {formatUsd(tooltip.spendUsd)}</p> : null}
+                    {tooltip.metric === "results" ? <p>Resultados: {tooltip.leads}</p> : null}
+                    {tooltip.metric === "cpr" ? (
+                      <p>Costo/resultado: {tooltip.cpr != null ? formatUsd(tooltip.cpr) : "-"}</p>
+                    ) : null}
                   </div>
                 ) : null}
               </div>
@@ -423,6 +426,39 @@ function DashboardLineChart({
         .join(" L ")}`
     : "";
 
+  const setLineTooltipFromMouse = (
+    metric: "spend" | "results" | "cpr",
+    event: ReactMouseEvent<SVGPathElement>
+  ) => {
+    const svg = event.currentTarget.ownerSVGElement;
+    if (!svg || points.length === 0) return;
+
+    const rect = svg.getBoundingClientRect();
+    const xInViewBox = ((event.clientX - rect.left) / rect.width) * width;
+
+    const candidatePoints =
+      metric === "cpr" ? points.filter((p) => p.cprY != null) : points;
+    if (candidatePoints.length === 0) return;
+
+    const nearest = candidatePoints.reduce((best, current) =>
+      Math.abs(current.x - xInViewBox) < Math.abs(best.x - xInViewBox) ? current : best
+    );
+
+    const markerY =
+      metric === "spend" ? nearest.spendY : metric === "results" ? nearest.leadsY : nearest.cprY!;
+    const markerColor = metric === "spend" ? "#1d4ed8" : metric === "results" ? "#10b981" : "#7c3aed";
+
+    onHover({
+      ...nearest,
+      x: nearest.x * 0.9,
+      y: markerY * 0.9,
+      markerX: nearest.x,
+      markerY,
+      markerColor,
+      metric,
+    });
+  };
+
   const hourTicks = Array.from({ length: currentHour + 1 }).map((_, hour) => {
     const t = new Date(dayStart);
     t.setHours(hour, 0, 0, 0);
@@ -483,58 +519,95 @@ function DashboardLineChart({
       {leadsPath ? <path d={leadsPath} fill="none" stroke="#10b981" strokeWidth="2" /> : null}
       {cprPath ? <path d={cprPath} fill="none" stroke="#7c3aed" strokeWidth="2" /> : null}
 
+      {spendPath ? (
+        <path
+          d={spendPath}
+          fill="none"
+          stroke="transparent"
+          strokeWidth="18"
+          style={{ pointerEvents: "stroke" }}
+          onMouseMove={(event) => setLineTooltipFromMouse("spend", event)}
+          onMouseLeave={() => onHover(null)}
+        />
+      ) : null}
+      {leadsPath ? (
+        <path
+          d={leadsPath}
+          fill="none"
+          stroke="transparent"
+          strokeWidth="18"
+          style={{ pointerEvents: "stroke" }}
+          onMouseMove={(event) => setLineTooltipFromMouse("results", event)}
+          onMouseLeave={() => onHover(null)}
+        />
+      ) : null}
+      {cprPath ? (
+        <path
+          d={cprPath}
+          fill="none"
+          stroke="transparent"
+          strokeWidth="18"
+          style={{ pointerEvents: "stroke" }}
+          onMouseMove={(event) => setLineTooltipFromMouse("cpr", event)}
+          onMouseLeave={() => onHover(null)}
+        />
+      ) : null}
+
       {points.map((p, idx) => (
         <g key={`pt-${idx}`}>
           <circle
             cx={p.x}
             cy={p.spendY}
-            r="9"
+            r="12"
             fill="transparent"
-            onMouseEnter={() =>
-              onHover({
-                ...p,
-                x: p.x * 0.9,
-                y: p.spendY * 0.9,
-                markerX: p.x,
-                markerY: p.spendY,
-                markerColor: "#1d4ed8",
-              })
-            }
+                onMouseEnter={() =>
+                  onHover({
+                    ...p,
+                    x: p.x * 0.9,
+                    y: p.spendY * 0.9,
+                    markerX: p.x,
+                    markerY: p.spendY,
+                    markerColor: "#1d4ed8",
+                    metric: "spend",
+                  })
+                }
             onMouseLeave={() => onHover(null)}
           />
           <circle
             cx={p.x}
             cy={p.leadsY}
-            r="9"
+            r="12"
             fill="transparent"
-            onMouseEnter={() =>
-              onHover({
-                ...p,
-                x: p.x * 0.9,
-                y: p.leadsY * 0.9,
-                markerX: p.x,
-                markerY: p.leadsY,
-                markerColor: "#10b981",
-              })
-            }
+                onMouseEnter={() =>
+                  onHover({
+                    ...p,
+                    x: p.x * 0.9,
+                    y: p.leadsY * 0.9,
+                    markerX: p.x,
+                    markerY: p.leadsY,
+                    markerColor: "#10b981",
+                    metric: "results",
+                  })
+                }
             onMouseLeave={() => onHover(null)}
           />
           {p.cprY != null ? (
             <circle
               cx={p.x}
               cy={p.cprY}
-              r="9"
+              r="12"
               fill="transparent"
-              onMouseEnter={() =>
-                onHover({
-                  ...p,
-                  x: p.x * 0.9,
-                  y: p.cprY! * 0.9,
-                  markerX: p.x,
-                  markerY: p.cprY!,
-                  markerColor: "#7c3aed",
-                })
-              }
+                onMouseEnter={() =>
+                  onHover({
+                    ...p,
+                    x: p.x * 0.9,
+                    y: p.cprY! * 0.9,
+                    markerX: p.x,
+                    markerY: p.cprY!,
+                    markerColor: "#7c3aed",
+                    metric: "cpr",
+                  })
+                }
               onMouseLeave={() => onHover(null)}
             />
           ) : null}
