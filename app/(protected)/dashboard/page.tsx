@@ -37,6 +37,9 @@ type TimeseriesPoint = {
 type ChartTooltip = {
   x: number;
   y: number;
+  markerX: number;
+  markerY: number;
+  markerColor: string;
   label: string;
   spendUsd: number;
   leads: number;
@@ -231,24 +234,29 @@ export default function DashboardPage() {
               <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                 <h2 className="text-xl font-semibold text-[#111827]">Progreso del día</h2>
                 <p className="text-xs text-slate-500">
-                  Eje izquierdo: gasto (USD) y leads. Eje derecho: costo por resultado (USD).
+                  Eje izquierdo: gasto (USD) y resultados. Eje derecho: costo por resultado (USD).
                 </p>
               </div>
 
-              <div className="relative mt-4 h-[320px] w-full rounded-xl border border-slate-100 bg-slate-50 p-3">
-                <DashboardLineChart series={series} onHover={setTooltip} />
+              <div className="relative mt-4 h-[320px] w-full rounded-xl border border-slate-100 bg-white p-3">
+                <DashboardLineChart series={series} onHover={setTooltip} tooltip={tooltip} />
 
                 {tooltip ? (
                   <div
-                    className="pointer-events-none absolute z-20 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 shadow"
+                    className="pointer-events-none absolute z-20 rounded-lg bg-[#0f172a] px-3 py-2 text-xs text-slate-100 shadow-xl"
                     style={{ left: `${tooltip.x}px`, top: `${tooltip.y}px` }}
                   >
-                    <p className="font-semibold text-[#111827]">{tooltip.label}</p>
+                    <p className="font-semibold text-white">{tooltip.label}</p>
                     <p>Gasto: {formatUsd(tooltip.spendUsd)}</p>
-                    <p>Leads: {tooltip.leads}</p>
+                    <p>Resultados: {tooltip.leads}</p>
                     <p>Costo/resultado: {tooltip.cpr != null ? formatUsd(tooltip.cpr) : "-"}</p>
                   </div>
                 ) : null}
+              </div>
+              <div className="mt-3 flex items-center justify-center gap-6 text-xs text-slate-700">
+                <LegendItem color="#7c3aed" label="Costo (costo por resultado)" />
+                <LegendItem color="#1d4ed8" label="Gasto" />
+                <LegendItem color="#10b981" label="Resultados" />
               </div>
             </section>
 
@@ -345,9 +353,11 @@ function SkeletonCard() {
 function DashboardLineChart({
   series,
   onHover,
+  tooltip,
 }: {
   series: TimeseriesPoint[];
   onHover: (tooltip: ChartTooltip | null) => void;
+  tooltip: ChartTooltip | null;
 }) {
   const width = 980;
   const height = 280;
@@ -365,6 +375,11 @@ function DashboardLineChart({
     ...series.flatMap((d) => [Number(d.spend_usd || 0), Number(d.leads_count || 0)])
   );
   const rightMax = Math.max(1, ...series.map((d) => Number(d.cost_per_result_usd || 0)));
+  const horizontalGridSteps = 6;
+  const currentHour = now.getHours();
+  const lastSnapshotMs = series.length
+    ? new Date(series[series.length - 1].snapshot_time).getTime()
+    : now.getTime();
 
   const points = useMemo(() => {
     return series.map((d) => {
@@ -408,8 +423,45 @@ function DashboardLineChart({
         .join(" L ")}`
     : "";
 
+  const hourTicks = Array.from({ length: currentHour + 1 }).map((_, hour) => {
+    const t = new Date(dayStart);
+    t.setHours(hour, 0, 0, 0);
+    const xRatio = Math.min(Math.max((t.getTime() - dayStart.getTime()) / totalRangeMs, 0), 1);
+    return {
+      x: padding.left + xRatio * chartW,
+      label: `${String(hour).padStart(2, "0")}h`,
+    };
+  });
+
+  const lastTickRatio = Math.min(Math.max((lastSnapshotMs - dayStart.getTime()) / totalRangeMs, 0), 1);
+  const lastTick = {
+    x: padding.left + lastTickRatio * chartW,
+    label: new Date(lastSnapshotMs).toLocaleTimeString("es-PE", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }),
+  };
+  const lastHourLabel = `${String(new Date(lastSnapshotMs).getHours()).padStart(2, "0")}h`;
+  const shouldRenderLastTick = lastTick.label !== lastHourLabel;
+
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full">
+      {Array.from({ length: horizontalGridSteps + 1 }).map((_, i) => {
+        const y = padding.top + (i / horizontalGridSteps) * chartH;
+        return (
+          <line
+            key={`grid-${i}`}
+            x1={padding.left}
+            y1={y}
+            x2={width - padding.right}
+            y2={y}
+            stroke="#e2e8f0"
+            strokeWidth="1"
+          />
+        );
+      })}
+
       <line x1={padding.left} y1={padding.top} x2={padding.left} y2={height - padding.bottom} stroke="#cbd5e1" />
       <line x1={padding.left} y1={height - padding.bottom} x2={width - padding.right} y2={height - padding.bottom} stroke="#cbd5e1" />
       <line x1={width - padding.right} y1={padding.top} x2={width - padding.right} y2={height - padding.bottom} stroke="#cbd5e1" />
@@ -436,49 +488,106 @@ function DashboardLineChart({
           <circle
             cx={p.x}
             cy={p.spendY}
-            r="3"
-            fill="#1d4ed8"
-            onMouseEnter={() => onHover({ ...p, x: p.x * 0.9, y: p.spendY * 0.9 })}
+            r="9"
+            fill="transparent"
+            onMouseEnter={() =>
+              onHover({
+                ...p,
+                x: p.x * 0.9,
+                y: p.spendY * 0.9,
+                markerX: p.x,
+                markerY: p.spendY,
+                markerColor: "#1d4ed8",
+              })
+            }
             onMouseLeave={() => onHover(null)}
           />
           <circle
             cx={p.x}
             cy={p.leadsY}
-            r="3"
-            fill="#10b981"
-            onMouseEnter={() => onHover({ ...p, x: p.x * 0.9, y: p.leadsY * 0.9 })}
+            r="9"
+            fill="transparent"
+            onMouseEnter={() =>
+              onHover({
+                ...p,
+                x: p.x * 0.9,
+                y: p.leadsY * 0.9,
+                markerX: p.x,
+                markerY: p.leadsY,
+                markerColor: "#10b981",
+              })
+            }
             onMouseLeave={() => onHover(null)}
           />
           {p.cprY != null ? (
             <circle
               cx={p.x}
               cy={p.cprY}
-              r="3"
-              fill="#7c3aed"
-              onMouseEnter={() => onHover({ ...p, x: p.x * 0.9, y: p.cprY! * 0.9 })}
+              r="9"
+              fill="transparent"
+              onMouseEnter={() =>
+                onHover({
+                  ...p,
+                  x: p.x * 0.9,
+                  y: p.cprY! * 0.9,
+                  markerX: p.x,
+                  markerY: p.cprY!,
+                  markerColor: "#7c3aed",
+                })
+              }
               onMouseLeave={() => onHover(null)}
             />
           ) : null}
         </g>
       ))}
 
-      <text x={padding.left} y={height - 8} fontSize="10" fill="#64748b">
-        00:00
-      </text>
-      <text x={width - padding.right - 35} y={height - 8} fontSize="10" fill="#64748b">
-        {new Date().toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })}
-      </text>
+      {tooltip ? (
+        <circle cx={tooltip.markerX} cy={tooltip.markerY} r="4" fill={tooltip.markerColor} stroke="#ffffff" strokeWidth="1.5" />
+      ) : null}
 
-      <text x={padding.left + 8} y={padding.top + 12} fontSize="10" fill="#1d4ed8">
-        Gasto (USD)
-      </text>
-      <text x={padding.left + 90} y={padding.top + 12} fontSize="10" fill="#10b981">
-        Leads
-      </text>
-      <text x={padding.left + 132} y={padding.top + 12} fontSize="10" fill="#7c3aed">
-        Costo/resultado
-      </text>
+      {hourTicks.map((tick) => (
+        <g key={`xtick-${tick.label}`}>
+          <line
+            x1={tick.x}
+            y1={height - padding.bottom}
+            x2={tick.x}
+            y2={height - padding.bottom + 4}
+            stroke="#94a3b8"
+            strokeWidth="1"
+          />
+          <text x={tick.x} y={height - 8} textAnchor="middle" fontSize="10" fill="#64748b">
+            {tick.label}
+          </text>
+        </g>
+      ))}
+
+      {shouldRenderLastTick ? (
+        <g>
+          <line
+            x1={lastTick.x}
+            y1={height - padding.bottom}
+            x2={lastTick.x}
+            y2={height - padding.bottom + 4}
+            stroke="#94a3b8"
+            strokeWidth="1"
+          />
+          <text x={lastTick.x} y={height - 8} textAnchor="middle" fontSize="10" fill="#64748b">
+            {lastTick.label}
+          </text>
+        </g>
+      ) : null}
     </svg>
+  );
+}
+
+function LegendItem({ color, label }: { color: string; label: string }) {
+  return (
+    <span className="inline-flex items-center gap-2">
+      <svg viewBox="0 0 14 8" className="h-2.5 w-4">
+        <rect x="0" y="0" width="14" height="8" rx="1" fill={color} />
+      </svg>
+      {label}
+    </span>
   );
 }
 
