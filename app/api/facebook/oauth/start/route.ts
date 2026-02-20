@@ -17,15 +17,10 @@ export async function GET(request: Request) {
   const state = crypto.randomUUID();
   const redirectUri = `${getBaseUrl(origin)}/api/facebook/oauth/callback`;
   const scopes = [
-    "email",
-    "public_profile",
-    "pages_show_list",
-    "pages_read_engagement",
-    "pages_manage_metadata",
-    "business_management",
     "ads_management",
     "ads_read",
-    "read_insights",
+    "business_management",
+    "pages_read_engagement",
   ].join(",");
 
   const facebookAuthUrl = new URL("https://www.facebook.com/v23.0/dialog/oauth");
