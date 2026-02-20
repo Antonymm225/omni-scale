@@ -5,6 +5,8 @@ create table if not exists public.facebook_dashboard_metrics (
   active_accounts_count integer not null default 0,
   active_ads_count integer not null default 0,
   total_spend_usd numeric(14,2) not null default 0,
+  total_leads integer not null default 0,
+  cost_per_result_usd numeric(14,2),
   source_date date not null default current_date,
   last_synced_at timestamptz not null default now(),
   created_at timestamptz not null default now(),

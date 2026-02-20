@@ -14,6 +14,7 @@ type GraphAd = {
 
 type GraphInsight = {
   spend?: string;
+  actions?: Array<{ action_type?: string; value?: string }>;
 };
 
 type AdAccountRow = {
@@ -34,6 +35,8 @@ type DashboardAdAccountMetricRow = {
   spend_original: number;
   currency: string | null;
   spend_usd: number;
+  leads_count: number;
+  cost_per_result_usd: number | null;
   source_date: string;
   last_synced_at: string;
 };
@@ -43,6 +46,8 @@ export type DashboardSyncSummary = {
   activeAccountsCount: number;
   activeAdsCount: number;
   totalSpendUsd: number;
+  totalLeads: number;
+  costPerResultUsd: number | null;
 };
 
 const GRAPH_BASE_URL = "https://graph.facebook.com/v23.0";
@@ -105,6 +110,23 @@ function isActiveStatus(status: string | undefined) {
   return status === "ACTIVE";
 }
 
+function parseLeadCount(actions?: Array<{ action_type?: string; value?: string }>) {
+  if (!actions || actions.length === 0) return 0;
+
+  const leadActionTypes = new Set([
+    "lead",
+    "onsite_conversion.lead_grouped",
+    "onsite_conversion.lead",
+    "offsite_conversion.fb_pixel_lead",
+    "offsite_conversion.lead",
+  ]);
+
+  return actions.reduce((sum, action) => {
+    if (!action.action_type || !leadActionTypes.has(action.action_type)) return sum;
+    return sum + Number(action.value || 0);
+  }, 0);
+}
+
 export async function syncUserDashboardMetrics(
   userId: string,
   token: string,
@@ -125,6 +147,7 @@ export async function syncUserDashboardMetrics(
 
   let activeAccountsCount = 0;
   let activeAdsCount = 0;
+  let totalLeads = 0;
   const detailRows: DashboardAdAccountMetricRow[] = [];
   const nowIso = new Date().toISOString();
   const sourceDate = nowIso.slice(0, 10);
@@ -154,16 +177,20 @@ export async function syncUserDashboardMetrics(
       typeof accountMeta.account_status === "number" ? accountMeta.account_status : null;
 
     const insights = await fetchJson<GraphPagingResponse<GraphInsight>>(
-      `${GRAPH_BASE_URL}/${accountEdgeId}/insights?fields=spend&date_preset=today&level=account&limit=1&access_token=${encodeURIComponent(token)}`
+      `${GRAPH_BASE_URL}/${accountEdgeId}/insights?fields=spend,actions&date_preset=today&level=account&limit=1&access_token=${encodeURIComponent(token)}`
     ).catch(() => ({ data: [] }));
 
-    const spendValue = Number(insights.data?.[0]?.spend || 0);
+    const insightRow = insights.data?.[0];
+    const spendValue = Number(insightRow?.spend || 0);
+    const leadsCount = parseLeadCount(insightRow?.actions);
     const spendUsd = spendValue > 0 ? convertToUsd(spendValue, ad.currency, rates) : 0;
+    const costPerResultUsd = leadsCount > 0 ? Number((spendUsd / leadsCount).toFixed(2)) : null;
 
     if (isActiveAccount) {
       activeAccountsCount += 1;
       activeAdsCount += accountActiveAdsCount;
     }
+    totalLeads += leadsCount;
 
     detailRows.push({
       user_id: userId,
@@ -176,12 +203,16 @@ export async function syncUserDashboardMetrics(
       spend_original: Number(spendValue.toFixed(2)),
       currency: ad.currency || null,
       spend_usd: Number(spendUsd.toFixed(2)),
+      leads_count: leadsCount,
+      cost_per_result_usd: costPerResultUsd,
       source_date: sourceDate,
       last_synced_at: nowIso,
     });
   }
 
   const totalSpendUsd = detailRows.reduce((sum, row) => sum + row.spend_usd, 0);
+  const costPerResultUsd =
+    totalLeads > 0 ? Number((totalSpendUsd / totalLeads).toFixed(2)) : null;
 
   const { error: detailDeleteError } = await supabaseAdmin
     .from("facebook_dashboard_ad_account_metrics")
@@ -208,6 +239,8 @@ export async function syncUserDashboardMetrics(
       active_accounts_count: activeAccountsCount,
       active_ads_count: activeAdsCount,
       total_spend_usd: Number(totalSpendUsd.toFixed(2)),
+      total_leads: totalLeads,
+      cost_per_result_usd: costPerResultUsd,
       source_date: sourceDate,
       last_synced_at: nowIso,
       updated_at: nowIso,
@@ -219,11 +252,34 @@ export async function syncUserDashboardMetrics(
     throw new Error(upsertError.message);
   }
 
+  const roundedNow = new Date(nowIso);
+  roundedNow.setUTCSeconds(0, 0);
+  const roundedMinutes = Math.floor(roundedNow.getUTCMinutes() / 10) * 10;
+  roundedNow.setUTCMinutes(roundedMinutes);
+
+  const { error: seriesError } = await supabaseAdmin.from("facebook_dashboard_timeseries").upsert(
+    {
+      user_id: userId,
+      snapshot_time: roundedNow.toISOString(),
+      source_date: sourceDate,
+      spend_usd: Number(totalSpendUsd.toFixed(2)),
+      leads_count: totalLeads,
+      cost_per_result_usd: costPerResultUsd,
+    },
+    { onConflict: "user_id,snapshot_time" }
+  );
+
+  if (seriesError) {
+    throw new Error(seriesError.message);
+  }
+
   return {
     userId,
     activeAccountsCount,
     activeAdsCount,
     totalSpendUsd: Number(totalSpendUsd.toFixed(2)),
+    totalLeads,
+    costPerResultUsd,
   };
 }
 

@@ -1,12 +1,14 @@
 ﻿"use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 
 type DashboardMetrics = {
   active_accounts_count: number;
   active_ads_count: number;
   total_spend_usd: number;
+  total_leads: number;
+  cost_per_result_usd: number | null;
   source_date: string;
   last_synced_at: string;
 };
@@ -21,6 +23,24 @@ type AdAccountMetric = {
   spend_original: number;
   currency: string | null;
   spend_usd: number;
+  leads_count: number;
+  cost_per_result_usd: number | null;
+};
+
+type TimeseriesPoint = {
+  snapshot_time: string;
+  spend_usd: number;
+  leads_count: number;
+  cost_per_result_usd: number | null;
+};
+
+type ChartTooltip = {
+  x: number;
+  y: number;
+  label: string;
+  spendUsd: number;
+  leads: number;
+  cpr: number | null;
 };
 
 export default function DashboardPage() {
@@ -30,6 +50,8 @@ export default function DashboardPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
   const [accountRows, setAccountRows] = useState<AdAccountMetric[]>([]);
+  const [series, setSeries] = useState<TimeseriesPoint[]>([]);
+  const [tooltip, setTooltip] = useState<ChartTooltip | null>(null);
 
   const loadMetrics = async () => {
     setLoading(true);
@@ -46,21 +68,34 @@ export default function DashboardPage() {
       return;
     }
 
-    const [metricsRes, accountsRes] = await Promise.all([
+    const today = new Date();
+    const y = today.getFullYear();
+    const m = String(today.getMonth() + 1).padStart(2, "0");
+    const d = String(today.getDate()).padStart(2, "0");
+    const todayDate = `${y}-${m}-${d}`;
+
+    const [metricsRes, accountsRes, seriesRes] = await Promise.all([
       supabase
         .from("facebook_dashboard_metrics")
-        .select("active_accounts_count,active_ads_count,total_spend_usd,source_date,last_synced_at")
+        .select(
+          "active_accounts_count,active_ads_count,total_spend_usd,total_leads,cost_per_result_usd,source_date,last_synced_at"
+        )
         .eq("user_id", user.id)
         .maybeSingle(),
       supabase
         .from("facebook_dashboard_ad_account_metrics")
         .select(
-          "facebook_ad_account_id,account_id,account_name,active_ads_count,is_active_account,account_status,spend_original,currency,spend_usd"
+          "facebook_ad_account_id,account_id,account_name,active_ads_count,is_active_account,account_status,spend_original,currency,spend_usd,leads_count,cost_per_result_usd"
         )
         .eq("user_id", user.id)
         .eq("is_active_account", true)
-        .order("is_active_account", { ascending: false })
         .order("spend_usd", { ascending: false }),
+      supabase
+        .from("facebook_dashboard_timeseries")
+        .select("snapshot_time,spend_usd,leads_count,cost_per_result_usd")
+        .eq("user_id", user.id)
+        .eq("source_date", todayDate)
+        .order("snapshot_time", { ascending: true }),
     ]);
 
     if (metricsRes.error) {
@@ -75,8 +110,15 @@ export default function DashboardPage() {
       return;
     }
 
+    if (seriesRes.error) {
+      setError(seriesRes.error.message);
+      setLoading(false);
+      return;
+    }
+
     setMetrics((metricsRes.data as DashboardMetrics | null) || null);
     setAccountRows((accountsRes.data as AdAccountMetric[]) || []);
+    setSeries((seriesRes.data as TimeseriesPoint[]) || []);
     setLoading(false);
   };
 
@@ -143,10 +185,15 @@ export default function DashboardPage() {
 
         {loading ? (
           <>
-            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <SkeletonCard />
               <SkeletonCard />
               <SkeletonCard />
+              <SkeletonCard />
+            </div>
+            <div className="mt-6 animate-pulse rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="h-5 w-52 rounded bg-slate-200" />
+              <div className="mt-4 h-64 w-full rounded bg-slate-100" />
             </div>
             <div className="mt-6 animate-pulse rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <div className="h-5 w-52 rounded bg-slate-200" />
@@ -157,7 +204,7 @@ export default function DashboardPage() {
           </>
         ) : (
           <>
-            <section className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <section className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
               <MetricCard
                 title="Cuentas activas"
                 value={metrics?.active_accounts_count ?? 0}
@@ -165,17 +212,44 @@ export default function DashboardPage() {
               />
               <MetricCard
                 title="Gasto total hoy (USD)"
-                value={`$${Number(metrics?.total_spend_usd ?? 0).toLocaleString("en-US", {
-                  minimumFractionDigits: 2,
-                  maximumFractionDigits: 2,
-                })}`}
+                value={formatUsd(metrics?.total_spend_usd ?? 0)}
                 subtitle="Suma de gasto diario por ad account"
+              />
+              <MetricCard
+                title="Costo por resultado"
+                value={metrics?.cost_per_result_usd != null ? formatUsd(metrics.cost_per_result_usd) : "-"}
+                subtitle="Gasto total USD / leads totales"
               />
               <MetricCard
                 title="Ads activos"
                 value={metrics?.active_ads_count ?? 0}
                 subtitle="Total de anuncios en ejecución"
               />
+            </section>
+
+            <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <h2 className="text-xl font-semibold text-[#111827]">Progreso del día</h2>
+                <p className="text-xs text-slate-500">
+                  Eje izquierdo: gasto (USD) y leads. Eje derecho: costo por resultado (USD).
+                </p>
+              </div>
+
+              <div className="relative mt-4 h-[320px] w-full rounded-xl border border-slate-100 bg-slate-50 p-3">
+                <DashboardLineChart series={series} onHover={setTooltip} />
+
+                {tooltip ? (
+                  <div
+                    className="pointer-events-none absolute z-20 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs text-slate-700 shadow"
+                    style={{ left: `${tooltip.x}px`, top: `${tooltip.y}px` }}
+                  >
+                    <p className="font-semibold text-[#111827]">{tooltip.label}</p>
+                    <p>Gasto: {formatUsd(tooltip.spendUsd)}</p>
+                    <p>Leads: {tooltip.leads}</p>
+                    <p>Costo/resultado: {tooltip.cpr != null ? formatUsd(tooltip.cpr) : "-"}</p>
+                  </div>
+                ) : null}
+              </div>
             </section>
 
             <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -194,13 +268,14 @@ export default function DashboardPage() {
                     <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
                       <th className="pb-3 pr-4 font-semibold">Ad Account</th>
                       <th className="pb-3 pr-4 font-semibold">Ads prendidos</th>
-                      <th className="pb-3 font-semibold">Gasto día (divisa)</th>
+                      <th className="pb-3 pr-4 font-semibold">Gasto día (divisa)</th>
+                      <th className="pb-3 font-semibold">Costo por resultado (USD)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {accountRows.length === 0 ? (
                       <tr>
-                        <td colSpan={3} className="py-6 text-sm text-slate-500">
+                        <td colSpan={4} className="py-6 text-sm text-slate-500">
                           Aún no hay ad accounts sincronizadas para hoy.
                         </td>
                       </tr>
@@ -219,8 +294,11 @@ export default function DashboardPage() {
                             </p>
                           </td>
                           <td className="py-3 pr-4 text-sm text-[#1D293D]">{row.active_ads_count}</td>
-                          <td className="py-3 text-sm font-semibold text-[#1D293D]">
+                          <td className="py-3 pr-4 text-sm font-semibold text-[#1D293D]">
                             {formatLocalCurrency(row.spend_original || 0, row.currency)}
+                          </td>
+                          <td className="py-3 text-sm font-semibold text-[#1D293D]">
+                            {row.cost_per_result_usd != null ? formatUsd(row.cost_per_result_usd) : "-"}
                           </td>
                         </tr>
                       ))
@@ -264,6 +342,146 @@ function SkeletonCard() {
   );
 }
 
+function DashboardLineChart({
+  series,
+  onHover,
+}: {
+  series: TimeseriesPoint[];
+  onHover: (tooltip: ChartTooltip | null) => void;
+}) {
+  const width = 980;
+  const height = 280;
+  const padding = { top: 20, right: 64, bottom: 34, left: 64 };
+  const chartW = width - padding.left - padding.right;
+  const chartH = height - padding.top - padding.bottom;
+
+  const now = new Date();
+  const dayStart = new Date(now);
+  dayStart.setHours(0, 0, 0, 0);
+  const totalRangeMs = Math.max(now.getTime() - dayStart.getTime(), 1);
+
+  const leftMax = Math.max(
+    1,
+    ...series.flatMap((d) => [Number(d.spend_usd || 0), Number(d.leads_count || 0)])
+  );
+  const rightMax = Math.max(1, ...series.map((d) => Number(d.cost_per_result_usd || 0)));
+
+  const points = useMemo(() => {
+    return series.map((d) => {
+      const t = new Date(d.snapshot_time).getTime();
+      const xRatio = Math.min(Math.max((t - dayStart.getTime()) / totalRangeMs, 0), 1);
+      const x = padding.left + xRatio * chartW;
+
+      const spendY = padding.top + (1 - Number(d.spend_usd || 0) / leftMax) * chartH;
+      const leadsY = padding.top + (1 - Number(d.leads_count || 0) / leftMax) * chartH;
+      const cprY =
+        d.cost_per_result_usd == null
+          ? null
+          : padding.top + (1 - Number(d.cost_per_result_usd || 0) / rightMax) * chartH;
+
+      return {
+        x,
+        spendY,
+        leadsY,
+        cprY,
+        label: new Date(d.snapshot_time).toLocaleTimeString("es-PE", {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
+        spendUsd: Number(d.spend_usd || 0),
+        leads: Number(d.leads_count || 0),
+        cpr: d.cost_per_result_usd == null ? null : Number(d.cost_per_result_usd),
+      };
+    });
+  }, [series, totalRangeMs, dayStart, chartW, chartH, leftMax, rightMax]);
+
+  const spendPath = points.length
+    ? `M ${points.map((p) => `${p.x},${p.spendY}`).join(" L ")}`
+    : "";
+  const leadsPath = points.length
+    ? `M ${points.map((p) => `${p.x},${p.leadsY}`).join(" L ")}`
+    : "";
+  const cprPath = points.filter((p) => p.cprY != null).length
+    ? `M ${points
+        .filter((p) => p.cprY != null)
+        .map((p) => `${p.x},${p.cprY}`)
+        .join(" L ")}`
+    : "";
+
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full">
+      <line x1={padding.left} y1={padding.top} x2={padding.left} y2={height - padding.bottom} stroke="#cbd5e1" />
+      <line x1={padding.left} y1={height - padding.bottom} x2={width - padding.right} y2={height - padding.bottom} stroke="#cbd5e1" />
+      <line x1={width - padding.right} y1={padding.top} x2={width - padding.right} y2={height - padding.bottom} stroke="#cbd5e1" />
+
+      <text x={padding.left - 8} y={padding.top + 4} textAnchor="end" fontSize="10" fill="#64748b">
+        {leftMax.toFixed(0)}
+      </text>
+      <text x={padding.left - 8} y={height - padding.bottom + 4} textAnchor="end" fontSize="10" fill="#64748b">
+        0
+      </text>
+      <text x={width - padding.right + 8} y={padding.top + 4} fontSize="10" fill="#64748b">
+        {rightMax.toFixed(0)}
+      </text>
+      <text x={width - padding.right + 8} y={height - padding.bottom + 4} fontSize="10" fill="#64748b">
+        0
+      </text>
+
+      {spendPath ? <path d={spendPath} fill="none" stroke="#1d4ed8" strokeWidth="2" /> : null}
+      {leadsPath ? <path d={leadsPath} fill="none" stroke="#10b981" strokeWidth="2" /> : null}
+      {cprPath ? <path d={cprPath} fill="none" stroke="#7c3aed" strokeWidth="2" /> : null}
+
+      {points.map((p, idx) => (
+        <g key={`pt-${idx}`}>
+          <circle
+            cx={p.x}
+            cy={p.spendY}
+            r="3"
+            fill="#1d4ed8"
+            onMouseEnter={() => onHover({ ...p, x: p.x * 0.9, y: p.spendY * 0.9 })}
+            onMouseLeave={() => onHover(null)}
+          />
+          <circle
+            cx={p.x}
+            cy={p.leadsY}
+            r="3"
+            fill="#10b981"
+            onMouseEnter={() => onHover({ ...p, x: p.x * 0.9, y: p.leadsY * 0.9 })}
+            onMouseLeave={() => onHover(null)}
+          />
+          {p.cprY != null ? (
+            <circle
+              cx={p.x}
+              cy={p.cprY}
+              r="3"
+              fill="#7c3aed"
+              onMouseEnter={() => onHover({ ...p, x: p.x * 0.9, y: p.cprY! * 0.9 })}
+              onMouseLeave={() => onHover(null)}
+            />
+          ) : null}
+        </g>
+      ))}
+
+      <text x={padding.left} y={height - 8} fontSize="10" fill="#64748b">
+        00:00
+      </text>
+      <text x={width - padding.right - 35} y={height - 8} fontSize="10" fill="#64748b">
+        {new Date().toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" })}
+      </text>
+
+      <text x={padding.left + 8} y={padding.top + 12} fontSize="10" fill="#1d4ed8">
+        Gasto (USD)
+      </text>
+      <text x={padding.left + 90} y={padding.top + 12} fontSize="10" fill="#10b981">
+        Leads
+      </text>
+      <text x={padding.left + 132} y={padding.top + 12} fontSize="10" fill="#7c3aed">
+        Costo/resultado
+      </text>
+    </svg>
+  );
+}
+
 function formatLocalCurrency(amount: number, currency: string | null) {
   const code = (currency || "USD").toUpperCase();
 
@@ -277,6 +495,13 @@ function formatLocalCurrency(amount: number, currency: string | null) {
   } catch {
     return `${code} ${amount.toFixed(2)}`;
   }
+}
+
+function formatUsd(amount: number) {
+  return `$${Number(amount || 0).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function isAccountStatusActive(status: number | null) {
