@@ -159,7 +159,7 @@ export default function DashboardPage() {
               <MetricCard
                 title="Cuentas activas"
                 value={metrics?.active_accounts_count ?? 0}
-                subtitle="Con campañas, adsets y ads activos"
+                subtitle="Con campaña activa y ads activos"
               />
               <MetricCard
                 title="Gasto total hoy (USD)"

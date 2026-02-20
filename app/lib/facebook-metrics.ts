@@ -10,7 +10,6 @@ type GraphAd = {
   id: string;
   effective_status?: string;
   campaign?: { id?: string; effective_status?: string };
-  adset?: { id?: string; effective_status?: string };
 };
 
 type GraphInsight = {
@@ -135,15 +134,14 @@ export async function syncUserDashboardMetrics(
       : `act_${ad.account_id || ad.facebook_ad_account_id}`;
 
     const activeAds = await graphFetchPaginated<GraphAd>(
-      `${GRAPH_BASE_URL}/${accountEdgeId}/ads?fields=id,effective_status,campaign{id,effective_status},adset{id,effective_status}&limit=200&access_token=${encodeURIComponent(token)}`,
+      `${GRAPH_BASE_URL}/${accountEdgeId}/ads?fields=id,effective_status,campaign{id,effective_status}&limit=200&access_token=${encodeURIComponent(token)}`,
       10
     ).catch(() => []);
 
     const realActiveAds = activeAds.filter(
       (adRow) =>
         isActiveStatus(adRow.effective_status) &&
-        isActiveStatus(adRow.campaign?.effective_status) &&
-        isActiveStatus(adRow.adset?.effective_status)
+        isActiveStatus(adRow.campaign?.effective_status)
     );
 
     const accountActiveAdsCount = realActiveAds.length;
