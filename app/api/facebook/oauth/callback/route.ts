@@ -299,7 +299,16 @@ export async function GET(request: NextRequest) {
         `${GRAPH_BASE_URL}/${accountEdgeId}/adspixels?fields=id,name&limit=200&access_token=${encodeURIComponent(token)}`
       ).catch(() => []);
 
-      pixels.forEach((pixel) => {
+      const datasets = await graphFetchPaginated<{ id: string; name?: string }>(
+        `${GRAPH_BASE_URL}/${accountEdgeId}/datasets?fields=id,name&limit=200&access_token=${encodeURIComponent(token)}`
+      ).catch(() => []);
+
+      const uniqueTrackingAssets = new Map<string, { id: string; name?: string }>();
+      [...pixels, ...datasets].forEach((asset) => {
+        if (asset.id) uniqueTrackingAssets.set(asset.id, asset);
+      });
+
+      uniqueTrackingAssets.forEach((pixel) => {
         pixelRows.push({
           connection_id: connectionId,
           user_id: user.id,

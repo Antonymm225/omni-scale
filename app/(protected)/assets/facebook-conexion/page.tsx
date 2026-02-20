@@ -332,7 +332,7 @@ export default function FacebookConexionPage() {
             value={businessManagerItems.length}
             icon={<BusinessIcon />}
           />
-          <MetricCard label="Pixels" value={pixelItems.length} icon={<PixelIcon />} />
+          <MetricCard label="Pixels / Datasets" value={pixelItems.length} icon={<PixelIcon />} />
           <MetricCard label="Instagram" value={instagramItems.length} icon={<InstagramIcon />} />
           <MetricCard label="Fan Pages" value={fanPageItems.length} icon={<PageIcon />} />
         </section>
@@ -386,8 +386,8 @@ export default function FacebookConexionPage() {
 
           <AssetAccordion
             id="pixels"
-            title={`Pixels (${pixelItems.length})`}
-            description="Pixels disponibles para medición y conversiones."
+            title={`Pixels / Datasets (${pixelItems.length})`}
+            description="Activos de medición y conversiones disponibles."
             items={pixelItems}
             openSection={openSection}
             setOpenSection={setOpenSection}
