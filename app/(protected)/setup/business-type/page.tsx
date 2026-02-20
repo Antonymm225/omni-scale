@@ -12,6 +12,11 @@ export default function BusinessTypePage() {
   const [errorMessage, setErrorMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    router.replace("/signin");
+  };
+
   const handleContinue = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setErrorMessage("");
@@ -64,15 +69,40 @@ export default function BusinessTypePage() {
   return (
     <div className="min-h-screen bg-[#f8fafc] px-6 py-10">
       <div className="mx-auto flex w-full max-w-5xl flex-col items-center">
-        <div className="mb-10 flex justify-center">
-          <Image
-            src="/omniscale-color-logo-complete.png"
-            alt="OMNI Scale"
-            width={220}
-            height={122}
-            priority
-            className="h-auto w-[220px]"
-          />
+        <div className="mb-8 grid w-full grid-cols-[1fr_auto_1fr] items-center">
+          <div />
+          <div className="flex justify-center">
+            <Image
+              src="/omniscale-color-logo-complete.png"
+              alt="OMNI Scale"
+              width={220}
+              height={122}
+              priority
+              className="h-auto w-[220px]"
+            />
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleSignOut}
+              className="inline-flex translate-x-1 items-center gap-1.5 rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50"
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="h-3.5 w-3.5"
+                aria-hidden="true"
+              >
+                <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                <path d="M16 17l5-5-5-5" />
+                <path d="M21 12H9" />
+              </svg>
+              Cerrar sesion
+            </button>
+          </div>
         </div>
 
         <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-8 shadow-sm sm:p-10">
