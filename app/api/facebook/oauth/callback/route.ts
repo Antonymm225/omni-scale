@@ -21,7 +21,7 @@ function redirectWithError(base: string, message: string) {
 }
 
 function redirectWithSuccess(base: string) {
-  return NextResponse.redirect(`${base}/setup/connect-assets?status=success`);
+  return NextResponse.redirect(`${base}/dashboard`);
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
@@ -343,6 +343,30 @@ export async function GET(request: NextRequest) {
       await supabaseAdmin.from("facebook_adsets").upsert(adsetRows, {
         onConflict: "user_id,facebook_adset_id",
       });
+    }
+
+    // Marca onboarding como completo en la etapa de assets.
+    const { data: onboardingRows, error: onboardingUpdateError } = await supabaseAdmin
+      .from("user_onboarding")
+      .update({ assets_connected: true })
+      .eq("user_id", user.id)
+      .select("user_id");
+
+    if (onboardingUpdateError) {
+      throw new Error(onboardingUpdateError.message);
+    }
+
+    if (!onboardingRows || onboardingRows.length === 0) {
+      const { error: onboardingInsertError } = await supabaseAdmin
+        .from("user_onboarding")
+        .insert({
+          user_id: user.id,
+          assets_connected: true,
+        });
+
+      if (onboardingInsertError) {
+        throw new Error(onboardingInsertError.message);
+      }
     }
 
     const response = redirectWithSuccess(baseUrl);
