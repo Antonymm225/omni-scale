@@ -116,7 +116,7 @@ export default function DashboardPage() {
           <div>
             <h1 className="text-3xl font-bold text-[#111827] sm:text-4xl">Dashboard</h1>
             <p className="mt-2 text-base text-slate-600">
-              Métricas cacheadas desde Meta, actualizadas automáticamente cada 10 minutos.
+              Métricas sincronizadas con Meta, actualizadas automáticamente cada 10 minutos.
             </p>
           </div>
           <button
