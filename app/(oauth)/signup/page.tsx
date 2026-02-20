@@ -80,11 +80,11 @@ export default function SignUp() {
               Crea tu cuenta
             </h2>
             <p className="text-slate-600 text-sm">
-              Comienza tu prueba gratuita de 7 dÃ­as
+              Comienza tu prueba gratuita de 7 dí­as
             </p>
           </div>
 
-          {/* âœ… NUEVO: Mensaje bonito dentro de la pÃ¡gina (sin quitar nada del layout) */}
+          {/* âœ… NUEVO: Mensaje bonito dentro de la página (sin quitar nada del layout) */}
           {emailSent && (
             <div className="border border-green-200 bg-green-50 rounded-xl p-4 flex gap-3 items-start">
               <div className="text-green-600 mt-0.5 shrink-0">
@@ -105,10 +105,10 @@ export default function SignUp() {
 
               <div className="text-sm">
                 <p className="font-semibold text-green-700">
-                  Â¡Listo! Revisa tu correo para verificar tu cuenta
+                  ¡Listo! Revisa tu correo para verificar tu cuenta
                 </p>
                 <p className="text-slate-600 mt-1">
-                  Te enviamos un enlace de confirmaciÃ³n.
+                  Te enviamos un enlace de confirmación.
                 </p>
               </div>
             </div>
@@ -124,7 +124,7 @@ export default function SignUp() {
               className="w-5 h-5"
               alt="Google"
             />
-            Registrarse con Google
+            Regístrarse con Google
           </button>
 
           {/* Divider */}
@@ -155,7 +155,7 @@ export default function SignUp() {
             {/* EMAIL */}
             <div>
               <label className="text-sm font-medium text-slate-700">
-                Correo electrÃ³nico
+                Correo electrónico
               </label>
               <input
                 type="email"
@@ -169,20 +169,20 @@ export default function SignUp() {
             {/* PASSWORD */}
             <div>
               <label className="text-sm font-medium text-slate-700">
-                ContraseÃ±a
+                Contraseña
               </label>
               <input
                 type="password"
-                placeholder="Crea una contraseÃ±a"
+                placeholder="Crea una contraseñ±a"
                 required
                 minLength={8}
                 pattern="^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d@$!%*?&]{8,}$"
-                title="Debe tener al menos 8 caracteres, incluir una letra y un nÃºmero"
+                title="Debe tener al menos 8 caracteres, incluir una letra y un número"
                 onChange={(e) => setPassword(e.target.value)}
                 className="mt-1 w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-black"
               />
               <p className="text-xs text-slate-400 mt-1">
-                MÃ­nimo 8 caracteres, al menos una letra y un nÃºmero.
+                Mí­nimo 8 caracteres, al menos una letra y un número.
               </p>
             </div>
 
@@ -196,9 +196,9 @@ export default function SignUp() {
 
           {/* SIGN IN LINK */}
           <div className="text-center text-sm text-slate-600">
-            Â¿Ya tienes una cuenta?{" "}
+            ¿Ya tienes una cuenta?{" "}
             <a href="/signin" className="font-medium text-black hover:underline">
-              Inicia sesiÃ³n
+              Inicia sesión
             </a>
           </div>
 
