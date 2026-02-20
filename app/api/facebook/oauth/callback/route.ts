@@ -10,28 +10,8 @@ type GraphPagingResponse<T> = {
 
 const GRAPH_BASE_URL = "https://graph.facebook.com/v23.0";
 
-function normalizeBaseUrl(rawUrl: string) {
-  const trimmed = rawUrl.trim().replace(/\/+$/, "");
-
-  let parsed: URL;
-  try {
-    parsed = new URL(trimmed);
-  } catch {
-    return trimmed;
-  }
-
-  if (
-    process.env.NODE_ENV === "production" &&
-    parsed.protocol !== "https:"
-  ) {
-    parsed.protocol = "https:";
-  }
-
-  if (parsed.hostname === "www.omniscale.pe") {
-    parsed.hostname = "omniscale.pe";
-  }
-
-  return parsed.toString().replace(/\/+$/, "");
+function getBaseUrl(origin: string) {
+  return process.env.NEXT_PUBLIC_SITE_URL || origin;
 }
 
 function redirectWithError(base: string, message: string) {
@@ -84,17 +64,8 @@ export async function GET(request: NextRequest) {
   try {
     const appId = process.env.FACEBOOK_APP_ID;
     const appSecret = process.env.FACEBOOK_APP_SECRET;
-    const baseUrl = normalizeBaseUrl(
-      process.env.NEXT_PUBLIC_SITE_URL || request.nextUrl.origin
-    );
-    const fallbackRedirectUri = `${baseUrl}/api/facebook/oauth/callback`;
-    const redirectUriFromDialog = request.cookies.get("fb_oauth_redirect_uri")?.value;
-    const redirectUri =
-      redirectUriFromDialog &&
-      redirectUriFromDialog.startsWith(baseUrl) &&
-      redirectUriFromDialog.includes("/api/facebook/oauth/callback")
-        ? redirectUriFromDialog
-        : fallbackRedirectUri;
+    const baseUrl = getBaseUrl(request.nextUrl.origin);
+    const redirectUri = `${baseUrl}/api/facebook/oauth/callback`;
 
     if (!appId || !appSecret) {
       return redirectWithError(baseUrl, "Faltan FACEBOOK_APP_ID o FACEBOOK_APP_SECRET");
@@ -117,13 +88,6 @@ export async function GET(request: NextRequest) {
     } = await supabaseServer.auth.getUser();
 
     if (userError || !user) return redirectWithError(baseUrl, "Sesion invalida");
-
-    console.info("[facebook-oauth] redirect uri diagnostics", {
-      redirect_uri_dialog: redirectUriFromDialog || null,
-      redirect_uri_exchange: redirectUri,
-      request_origin: request.nextUrl.origin,
-      request_host: request.nextUrl.host,
-    });
 
     const shortTokenUrl =
       `${GRAPH_BASE_URL}/oauth/access_token` +
@@ -389,20 +353,10 @@ export async function GET(request: NextRequest) {
       maxAge: 0,
       path: "/",
     });
-    response.cookies.set("fb_oauth_redirect_uri", "", {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      maxAge: 0,
-      path: "/",
-    });
     return response;
   } catch (error: unknown) {
     const message =
       error instanceof Error ? error.message : "Error desconocido en conexion Facebook";
-    return redirectWithError(
-      normalizeBaseUrl(process.env.NEXT_PUBLIC_SITE_URL || request.nextUrl.origin),
-      message
-    );
+    return redirectWithError(getBaseUrl(request.nextUrl.origin), message);
   }
 }
