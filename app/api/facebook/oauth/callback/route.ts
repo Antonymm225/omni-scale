@@ -342,8 +342,60 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    if (pixelRows.length > 0) {
-      await supabaseAdmin.from("facebook_pixels").upsert(pixelRows, {
+    for (const bm of businesses) {
+      const bmPixelsOwned = await graphFetchPaginated<{ id: string; name?: string }>(
+        `${GRAPH_BASE_URL}/${bm.id}/owned_pixels?fields=id,name&limit=200&access_token=${encodeURIComponent(token)}`
+      ).catch(() => []);
+
+      const bmPixelsClient = await graphFetchPaginated<{ id: string; name?: string }>(
+        `${GRAPH_BASE_URL}/${bm.id}/client_pixels?fields=id,name&limit=200&access_token=${encodeURIComponent(token)}`
+      ).catch(() => []);
+
+      const bmDatasetsOwned = await graphFetchPaginated<{ id: string; name?: string }>(
+        `${GRAPH_BASE_URL}/${bm.id}/owned_datasets?fields=id,name&limit=200&access_token=${encodeURIComponent(token)}`
+      ).catch(() => []);
+
+      const bmDatasetsClient = await graphFetchPaginated<{ id: string; name?: string }>(
+        `${GRAPH_BASE_URL}/${bm.id}/client_datasets?fields=id,name&limit=200&access_token=${encodeURIComponent(token)}`
+      ).catch(() => []);
+
+      const bmDatasetsDirect = await graphFetchPaginated<{ id: string; name?: string }>(
+        `${GRAPH_BASE_URL}/${bm.id}/datasets?fields=id,name&limit=200&access_token=${encodeURIComponent(token)}`
+      ).catch(() => []);
+
+      const uniqueBusinessTrackingAssets = new Map<string, { id: string; name?: string }>();
+      [
+        ...bmPixelsOwned,
+        ...bmPixelsClient,
+        ...bmDatasetsOwned,
+        ...bmDatasetsClient,
+        ...bmDatasetsDirect,
+      ].forEach((asset) => {
+        if (asset.id) uniqueBusinessTrackingAssets.set(asset.id, asset);
+      });
+
+      uniqueBusinessTrackingAssets.forEach((asset) => {
+        pixelRows.push({
+          connection_id: connectionId,
+          user_id: user.id,
+          facebook_ad_account_id: bm.id,
+          facebook_pixel_id: asset.id,
+          name: asset.name || null,
+        });
+      });
+    }
+
+    const dedupedPixelRows = Array.from(
+      pixelRows.reduce((acc, row) => {
+        if (!acc.has(row.facebook_pixel_id)) {
+          acc.set(row.facebook_pixel_id, row);
+        }
+        return acc;
+      }, new Map<string, (typeof pixelRows)[number]>()).values()
+    );
+
+    if (dedupedPixelRows.length > 0) {
+      await supabaseAdmin.from("facebook_pixels").upsert(dedupedPixelRows, {
         onConflict: "user_id,facebook_pixel_id",
       });
     }

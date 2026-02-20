@@ -240,7 +240,7 @@ export default function FacebookConexionPage() {
       pixels.map((row) => ({
         id: row.facebook_pixel_id,
         name: row.name || "Sin nombre",
-        meta: `Ad account: ${row.facebook_ad_account_id}`,
+        meta: `Origen ID: ${row.facebook_ad_account_id}`,
       })),
     [pixels]
   );
