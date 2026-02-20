@@ -30,6 +30,7 @@ type DashboardAdAccountMetricRow = {
   account_name: string | null;
   active_ads_count: number;
   is_active_account: boolean;
+  account_status: number | null;
   spend_original: number;
   currency: string | null;
   spend_usd: number;
@@ -146,6 +147,11 @@ export async function syncUserDashboardMetrics(
 
     const accountActiveAdsCount = realActiveAds.length;
     const isActiveAccount = accountActiveAdsCount > 0;
+    const accountMeta = await fetchJson<{ account_status?: number }>(
+      `${GRAPH_BASE_URL}/${accountEdgeId}?fields=account_status&access_token=${encodeURIComponent(token)}`
+    ).catch((): { account_status?: number } => ({}));
+    const accountStatus =
+      typeof accountMeta.account_status === "number" ? accountMeta.account_status : null;
 
     const insights = await fetchJson<GraphPagingResponse<GraphInsight>>(
       `${GRAPH_BASE_URL}/${accountEdgeId}/insights?fields=spend&date_preset=today&level=account&limit=1&access_token=${encodeURIComponent(token)}`
@@ -166,6 +172,7 @@ export async function syncUserDashboardMetrics(
       account_name: ad.name || null,
       active_ads_count: accountActiveAdsCount,
       is_active_account: isActiveAccount,
+      account_status: accountStatus,
       spend_original: Number(spendValue.toFixed(2)),
       currency: ad.currency || null,
       spend_usd: Number(spendUsd.toFixed(2)),

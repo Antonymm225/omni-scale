@@ -8,6 +8,7 @@ create table if not exists public.facebook_dashboard_ad_account_metrics (
   account_name text,
   active_ads_count integer not null default 0,
   is_active_account boolean not null default false,
+  account_status integer,
   spend_original numeric(14,2) not null default 0,
   currency text,
   spend_usd numeric(14,2) not null default 0,

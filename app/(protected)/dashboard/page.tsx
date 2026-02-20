@@ -17,6 +17,7 @@ type AdAccountMetric = {
   account_name: string | null;
   active_ads_count: number;
   is_active_account: boolean;
+  account_status: number | null;
   spend_original: number;
   currency: string | null;
   spend_usd: number;
@@ -54,7 +55,7 @@ export default function DashboardPage() {
       supabase
         .from("facebook_dashboard_ad_account_metrics")
         .select(
-          "facebook_ad_account_id,account_id,account_name,active_ads_count,is_active_account,spend_original,currency,spend_usd"
+          "facebook_ad_account_id,account_id,account_name,active_ads_count,is_active_account,account_status,spend_original,currency,spend_usd"
         )
         .eq("user_id", user.id)
         .eq("is_active_account", true)
@@ -207,9 +208,12 @@ export default function DashboardPage() {
                       accountRows.map((row) => (
                         <tr key={row.facebook_ad_account_id} className="border-b border-slate-100 last:border-b-0">
                           <td className="py-3 pr-4">
-                            <p className="text-sm font-semibold text-[#111827]">
-                              {row.account_name || "Sin nombre"}
-                            </p>
+                            <div className="flex items-center gap-2">
+                              <StatusDot isActive={isAccountStatusActive(row.account_status)} />
+                              <p className="text-sm font-semibold text-[#111827]">
+                                {row.account_name || "Sin nombre"}
+                              </p>
+                            </div>
                             <p className="text-xs text-slate-500">
                               ID: {row.account_id || row.facebook_ad_account_id}
                             </p>
@@ -273,4 +277,16 @@ function formatLocalCurrency(amount: number, currency: string | null) {
   } catch {
     return `${code} ${amount.toFixed(2)}`;
   }
+}
+
+function isAccountStatusActive(status: number | null) {
+  return status === 1;
+}
+
+function StatusDot({ isActive }: { isActive: boolean }) {
+  return (
+    <svg viewBox="0 0 16 16" className={`h-3.5 w-3.5 ${isActive ? "text-emerald-500" : "text-red-500"}`}>
+      <circle cx="8" cy="8" r="6" fill="currentColor" />
+    </svg>
+  );
 }
