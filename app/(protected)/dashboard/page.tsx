@@ -57,6 +57,7 @@ export default function DashboardPage() {
           "facebook_ad_account_id,account_id,account_name,active_ads_count,is_active_account,spend_original,currency,spend_usd"
         )
         .eq("user_id", user.id)
+        .eq("is_active_account", true)
         .order("is_active_account", { ascending: false })
         .order("spend_usd", { ascending: false }),
     ]);
