@@ -470,15 +470,20 @@ function DashboardLineChart({
   });
 
   const lastTickRatio = Math.min(Math.max((lastSnapshotMs - dayStart.getTime()) / totalRangeMs, 0), 1);
+  const lastSnapshotDate = new Date(lastSnapshotMs);
   const lastTick = {
     x: padding.left + lastTickRatio * chartW,
-    label: new Date(lastSnapshotMs).toLocaleTimeString("es-PE", {
+    label: lastSnapshotDate.toLocaleTimeString("es-PE", {
       hour: "2-digit",
       minute: "2-digit",
       hour12: false,
     }),
   };
-  const lastHourLabel = `${String(new Date(lastSnapshotMs).getHours()).padStart(2, "0")}h`;
+  const lastHourLabel = `${String(lastSnapshotDate.getHours()).padStart(2, "0")}h`;
+  const hideRoundedHourTick = lastSnapshotDate.getMinutes() < 30;
+  const renderedHourTicks = hourTicks.filter(
+    (tick) => !(hideRoundedHourTick && tick.label === lastHourLabel && lastTick.label !== lastHourLabel)
+  );
   const shouldRenderLastTick = lastTick.label !== lastHourLabel;
 
   return (
@@ -501,6 +506,27 @@ function DashboardLineChart({
       <line x1={padding.left} y1={padding.top} x2={padding.left} y2={height - padding.bottom} stroke="#cbd5e1" />
       <line x1={padding.left} y1={height - padding.bottom} x2={width - padding.right} y2={height - padding.bottom} stroke="#cbd5e1" />
       <line x1={width - padding.right} y1={padding.top} x2={width - padding.right} y2={height - padding.bottom} stroke="#cbd5e1" />
+
+      <text
+        x={44}
+        y={padding.top + chartH / 2}
+        transform={`rotate(-90 44 ${padding.top + chartH / 2})`}
+        textAnchor="middle"
+        fontSize="11"
+        fill="#475569"
+      >
+        Gasto / Resultados
+      </text>
+      <text
+        x={width - padding.right + 20}
+        y={padding.top + chartH / 2}
+        transform={`rotate(90 ${width - padding.right + 20} ${padding.top + chartH / 2})`}
+        textAnchor="middle"
+        fontSize="11"
+        fill="#475569"
+      >
+        Costo por resultado (USD)
+      </text>
 
       <text x={padding.left - 8} y={padding.top + 4} textAnchor="end" fontSize="10" fill="#64748b">
         {leftMax.toFixed(0)}
@@ -618,7 +644,7 @@ function DashboardLineChart({
         <circle cx={tooltip.markerX} cy={tooltip.markerY} r="4" fill={tooltip.markerColor} stroke="#ffffff" strokeWidth="1.5" />
       ) : null}
 
-      {hourTicks.map((tick) => (
+      {renderedHourTicks.map((tick) => (
         <g key={`xtick-${tick.label}`}>
           <line
             x1={tick.x}
