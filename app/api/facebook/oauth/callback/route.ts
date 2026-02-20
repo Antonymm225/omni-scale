@@ -26,12 +26,18 @@ function redirectWithSuccess(base: string) {
 
 async function fetchJson<T>(url: string): Promise<T> {
   const response = await fetch(url, { method: "GET", cache: "no-store" });
-  const data = await response.json();
+  const payload: unknown = await response.json();
   if (!response.ok) {
-    const message = data?.error?.message || "Request failed";
+    const message =
+      typeof payload === "object" &&
+      payload !== null &&
+      "error" in payload &&
+      typeof (payload as { error?: { message?: string } }).error?.message === "string"
+        ? (payload as { error?: { message?: string } }).error!.message!
+        : "Request failed";
     throw new Error(message);
   }
-  return data as T;
+  return payload as T;
 }
 
 async function graphFetchPaginated<T>(
@@ -43,10 +49,11 @@ async function graphFetchPaginated<T>(
   let pages = 0;
 
   while (nextUrl && pages < maxPages) {
-    const data = await fetchJson<GraphPagingResponse<T>>(nextUrl);
-    if (data.error?.message) throw new Error(data.error.message);
-    if (data.data?.length) rows.push(...data.data);
-    nextUrl = data.paging?.next;
+    const pageResponse: GraphPagingResponse<T> =
+      await fetchJson<GraphPagingResponse<T>>(nextUrl);
+    if (pageResponse.error?.message) throw new Error(pageResponse.error.message);
+    if (pageResponse.data?.length) rows.push(...pageResponse.data);
+    nextUrl = pageResponse.paging?.next;
     pages += 1;
   }
 
@@ -242,7 +249,11 @@ export async function GET(request: NextRequest) {
         instagram_business_account?: { id: string; username?: string; name?: string };
       }>(
         `${GRAPH_BASE_URL}/${page.id}?fields=instagram_business_account{id,username,name}&access_token=${encodeURIComponent(token)}`
-      ).catch(() => ({}));
+      ).catch(
+        (): {
+          instagram_business_account?: { id: string; username?: string; name?: string };
+        } => ({})
+      );
 
       if (igData.instagram_business_account?.id) {
         instagramRows.push({

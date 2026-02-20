@@ -1,16 +1,15 @@
 "use client";
 
 import { useEffect } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { supabase } from "../lib/supabaseClient";
 
 export default function VerifyEmail() {
   const router = useRouter();
-  const searchParams = useSearchParams();
 
   useEffect(() => {
     const verify = async () => {
-      const code = searchParams.get("code");
+      const code = new URLSearchParams(window.location.search).get("code");
 
       if (!code) {
         router.replace("/signin");
@@ -29,7 +28,7 @@ export default function VerifyEmail() {
     };
 
     verify();
-  }, [router, searchParams]);
+  }, [router]);
 
   return (
     <div className="flex items-center justify-center min-h-screen">
