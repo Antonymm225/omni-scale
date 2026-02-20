@@ -1,4 +1,4 @@
-﻿{
+{
   "crons": [
     {
       "path": "/api/cron/facebook-metrics",
@@ -6,3 +6,4 @@
     }
   ]
 }
+
