@@ -20,6 +20,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: "Menu",
     items: [
       { href: "/onboarding", label: "Onboarding" },
+      { href: "/dashboard", label: "Dashboard" },
       { href: "/campanas", label: "Campañas" },
       { href: "/ai-ads", label: "Ai Ads" },
     ],
@@ -47,7 +48,7 @@ const NAV_SECTIONS: NavSection[] = [
 
 function isItemActive(pathname: string, href: string) {
   if (href === "/onboarding") {
-    return pathname === "/dashboard" || pathname === "/onboarding";
+    return pathname === "/onboarding";
   }
   return pathname === href;
 }
