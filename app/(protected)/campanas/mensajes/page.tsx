@@ -194,7 +194,7 @@ export default function MensajesPage() {
           </div>
         ) : (
           <>
-            <section className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <section className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
               <MetricCard
                 title="Cuentas activas"
                 value={metrics?.active_accounts_count ?? 0}
@@ -204,6 +204,11 @@ export default function MensajesPage() {
                 title="Gasto total hoy (USD)"
                 value={formatUsd(metrics?.total_spend_usd ?? 0)}
                 subtitle="Solo mensajes"
+              />
+              <MetricCard
+                title="Resultados (mensajes)"
+                value={metrics?.total_results ?? 0}
+                subtitle="Conversaciones iniciadas"
               />
               <MetricCard
                 title="Costo por resultado"
@@ -265,13 +270,14 @@ export default function MensajesPage() {
                       <th className="pb-3 pr-4 font-semibold">Ad Account</th>
                       <th className="pb-3 pr-4 font-semibold">Ads prendidos</th>
                       <th className="pb-3 pr-4 font-semibold">Gasto día (divisa)</th>
+                      <th className="pb-3 pr-4 font-semibold">Resultados (mensajes)</th>
                       <th className="pb-3 font-semibold">Costo por resultado (USD)</th>
                     </tr>
                   </thead>
                   <tbody>
                     {accountRows.length === 0 ? (
                       <tr>
-                        <td colSpan={4} className="py-6 text-sm text-slate-500">
+                        <td colSpan={5} className="py-6 text-sm text-slate-500">
                           Aún no hay ad accounts con mensajes para hoy.
                         </td>
                       </tr>
@@ -288,6 +294,9 @@ export default function MensajesPage() {
                           <td className="py-3 pr-4 text-sm text-[#1D293D]">{row.active_ads_count}</td>
                           <td className="py-3 pr-4 text-sm font-semibold text-[#1D293D]">
                             {formatLocalCurrency(row.spend_original || 0, row.currency)}
+                          </td>
+                          <td className="py-3 pr-4 text-sm font-semibold text-[#1D293D]">
+                            {row.results_count}
                           </td>
                           <td className="py-3 text-sm font-semibold text-[#1D293D]">
                             {row.cost_per_result_usd != null ? formatUsd(row.cost_per_result_usd) : "-"}

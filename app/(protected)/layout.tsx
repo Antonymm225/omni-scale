@@ -135,8 +135,8 @@ export default function ProtectedLayout({
 
   return (
     <div className="min-h-screen bg-[#f3f5f9]">
-      <div className="flex min-h-screen">
-        <aside className="flex h-screen w-[250px] shrink-0 flex-col border-r border-slate-200 bg-white">
+      <div className="min-h-screen">
+        <aside className="fixed left-0 top-0 z-30 flex h-screen w-[250px] shrink-0 flex-col border-r border-slate-200 bg-white">
           <div className="shrink-0 border-b border-slate-200 px-5 py-4">
             <h1 className="text-2xl font-bold text-[#111827]">OMNI Scale</h1>
           </div>
@@ -196,7 +196,7 @@ export default function ProtectedLayout({
           </div>
         </aside>
 
-        <section className="min-w-0 flex-1">{children}</section>
+        <section className="ml-[250px] min-w-0">{children}</section>
       </div>
     </div>
   );
