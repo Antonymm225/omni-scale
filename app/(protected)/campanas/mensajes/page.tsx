@@ -355,24 +355,39 @@ function MessagesLineChart({
   dayStart.setHours(0, 0, 0, 0);
   const totalRangeMs = Math.max(now.getTime() - dayStart.getTime(), 1);
 
-  const leftMax = Math.max(1, ...series.flatMap((d) => [Number(d.spend_usd || 0), Number(d.results_count || 0)]));
+  const leftMax = Math.max(
+    1,
+    ...series.flatMap((d) => [Number(d.spend_usd || 0), Number(d.results_count || 0)])
+  );
   const rightMax = Math.max(1, ...series.map((d) => Number(d.cost_per_result_usd || 0)));
+  const horizontalGridSteps = 6;
+  const currentHour = now.getHours();
+  const lastSnapshotMs = series.length
+    ? new Date(series[series.length - 1].snapshot_time).getTime()
+    : now.getTime();
 
   const points = useMemo(() => {
     return series.map((d) => {
       const t = new Date(d.snapshot_time).getTime();
       const xRatio = Math.min(Math.max((t - dayStart.getTime()) / totalRangeMs, 0), 1);
       const x = padding.left + xRatio * chartW;
+
       const rawSpendY = padding.top + (1 - Number(d.spend_usd || 0) / leftMax) * chartH;
-      const spendY = Number(d.spend_usd || 0) > 0 ? Math.min(rawSpendY, height - padding.bottom - 2) : rawSpendY;
+      const spendY =
+        Number(d.spend_usd || 0) > 0
+          ? Math.min(rawSpendY, height - padding.bottom - 2)
+          : rawSpendY;
       const resultsY = padding.top + (1 - Number(d.results_count || 0) / leftMax) * chartH;
-      const cprY = d.cost_per_result_usd == null ? null : padding.top + (1 - Number(d.cost_per_result_usd || 0) / rightMax) * chartH;
+      const cprY =
+        d.cost_per_result_usd == null
+          ? null
+          : padding.top + (1 - Number(d.cost_per_result_usd || 0) / rightMax) * chartH;
 
       return {
         x,
         spendY,
         resultsY,
-        cprY,
+        cprY: cprY as number | null,
         label: new Date(d.snapshot_time).toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" }),
         spendUsd: Number(d.spend_usd || 0),
         results: Number(d.results_count || 0),
@@ -414,11 +429,87 @@ function MessagesLineChart({
     });
   };
 
+  const hourTicks = Array.from({ length: currentHour + 1 }).map((_, hour) => {
+    const t = new Date(dayStart);
+    t.setHours(hour, 0, 0, 0);
+    const xRatio = Math.min(Math.max((t.getTime() - dayStart.getTime()) / totalRangeMs, 0), 1);
+    return {
+      x: padding.left + xRatio * chartW,
+      label: `${String(hour).padStart(2, "0")}h`,
+    };
+  });
+
+  const lastTickRatio = Math.min(Math.max((lastSnapshotMs - dayStart.getTime()) / totalRangeMs, 0), 1);
+  const lastSnapshotDate = new Date(lastSnapshotMs);
+  const lastTick = {
+    x: padding.left + lastTickRatio * chartW,
+    label: lastSnapshotDate.toLocaleTimeString("es-PE", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }),
+  };
+  const lastHourLabel = `${String(lastSnapshotDate.getHours()).padStart(2, "0")}h`;
+  const hideRoundedHourTick = lastSnapshotDate.getMinutes() < 30;
+  const renderedHourTicks = hourTicks.filter(
+    (tick) => !(hideRoundedHourTick && tick.label === lastHourLabel && lastTick.label !== lastHourLabel)
+  );
+  const shouldRenderLastTick = lastTick.label !== lastHourLabel;
+
   return (
     <svg viewBox={`0 0 ${width} ${height}`} className="h-full w-full">
+      {Array.from({ length: horizontalGridSteps + 1 }).map((_, i) => {
+        const y = padding.top + (i / horizontalGridSteps) * chartH;
+        return (
+          <line
+            key={`grid-${i}`}
+            x1={padding.left}
+            y1={y}
+            x2={width - padding.right}
+            y2={y}
+            stroke="#e2e8f0"
+            strokeWidth="1"
+          />
+        );
+      })}
+
       <line x1={padding.left} y1={padding.top} x2={padding.left} y2={height - padding.bottom} stroke="#cbd5e1" />
       <line x1={padding.left} y1={height - padding.bottom} x2={width - padding.right} y2={height - padding.bottom} stroke="#cbd5e1" />
       <line x1={width - padding.right} y1={padding.top} x2={width - padding.right} y2={height - padding.bottom} stroke="#cbd5e1" />
+
+      <text
+        x={44}
+        y={padding.top + chartH / 2}
+        transform={`rotate(-90 44 ${padding.top + chartH / 2})`}
+        textAnchor="middle"
+        fontSize="11"
+        fill="#475569"
+      >
+        Gasto / Resultados
+      </text>
+      <text
+        x={width - padding.right + 20}
+        y={padding.top + chartH / 2}
+        transform={`rotate(90 ${width - padding.right + 20} ${padding.top + chartH / 2})`}
+        textAnchor="middle"
+        fontSize="11"
+        fill="#475569"
+      >
+        Costo por resultado (USD)
+      </text>
+
+      <text x={padding.left - 8} y={padding.top + 4} textAnchor="end" fontSize="10" fill="#64748b">
+        {leftMax.toFixed(0)}
+      </text>
+      <text x={padding.left - 8} y={height - padding.bottom + 4} textAnchor="end" fontSize="10" fill="#64748b">
+        0
+      </text>
+      <text x={width - padding.right + 8} y={padding.top + 4} fontSize="10" fill="#64748b">
+        {rightMax.toFixed(0)}
+      </text>
+      <text x={width - padding.right + 8} y={height - padding.bottom + 4} fontSize="10" fill="#64748b">
+        0
+      </text>
 
       {spendPath ? (
         <>
@@ -439,7 +530,100 @@ function MessagesLineChart({
         <path d={cprPath} fill="none" stroke="transparent" strokeWidth="28" style={{ pointerEvents: "stroke" }} onMouseMove={(e) => setLineTooltipFromMouse("cpr", e)} onMouseLeave={() => onHover(null)} />
       ) : null}
 
+      {points.map((p, idx) => (
+        <g key={`pt-${idx}`}>
+          <circle
+            cx={p.x}
+            cy={p.spendY}
+            r="16"
+            fill="transparent"
+            onMouseEnter={() =>
+              onHover({
+                ...p,
+                x: p.x * 0.9,
+                y: p.spendY * 0.9,
+                markerX: p.x,
+                markerY: p.spendY,
+                markerColor: "#1d4ed8",
+                metric: "spend",
+              })
+            }
+            onMouseLeave={() => onHover(null)}
+          />
+          <circle
+            cx={p.x}
+            cy={p.resultsY}
+            r="16"
+            fill="transparent"
+            onMouseEnter={() =>
+              onHover({
+                ...p,
+                x: p.x * 0.9,
+                y: p.resultsY * 0.9,
+                markerX: p.x,
+                markerY: p.resultsY,
+                markerColor: "#10b981",
+                metric: "results",
+              })
+            }
+            onMouseLeave={() => onHover(null)}
+          />
+          {p.cprY != null ? (
+            <circle
+              cx={p.x}
+              cy={p.cprY}
+              r="16"
+              fill="transparent"
+                onMouseEnter={() =>
+                onHover({
+                  ...p,
+                  x: p.x * 0.9,
+                  y: p.cprY! * 0.9,
+                  markerX: p.x,
+                  markerY: p.cprY!,
+                  markerColor: "#7c3aed",
+                  metric: "cpr",
+                })
+              }
+              onMouseLeave={() => onHover(null)}
+            />
+          ) : null}
+        </g>
+      ))}
+
       {tooltip ? <circle cx={tooltip.markerX} cy={tooltip.markerY} r="4" fill={tooltip.markerColor} stroke="#fff" strokeWidth="1.5" /> : null}
+
+      {renderedHourTicks.map((tick) => (
+        <g key={`xtick-${tick.label}`}>
+          <line
+            x1={tick.x}
+            y1={height - padding.bottom}
+            x2={tick.x}
+            y2={height - padding.bottom + 4}
+            stroke="#94a3b8"
+            strokeWidth="1"
+          />
+          <text x={tick.x} y={height - 8} textAnchor="middle" fontSize="10" fill="#64748b">
+            {tick.label}
+          </text>
+        </g>
+      ))}
+
+      {shouldRenderLastTick ? (
+        <g>
+          <line
+            x1={lastTick.x}
+            y1={height - padding.bottom}
+            x2={lastTick.x}
+            y2={height - padding.bottom + 4}
+            stroke="#94a3b8"
+            strokeWidth="1"
+          />
+          <text x={lastTick.x} y={height - 8} textAnchor="middle" fontSize="10" fill="#64748b">
+            {lastTick.label}
+          </text>
+        </g>
+      ) : null}
     </svg>
   );
 }
