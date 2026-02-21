@@ -82,6 +82,30 @@ type MessagingAdAccountMetricRow = {
   last_synced_at: string;
 };
 
+type LeadsAdAccountMetricRow = {
+  user_id: string;
+  facebook_ad_account_id: string;
+  account_id: string | null;
+  account_name: string | null;
+  active_campaigns_count: number;
+  active_ads_count: number;
+  is_active_account: boolean;
+  account_status: number | null;
+  spend_original: number;
+  currency: string | null;
+  spend_usd: number;
+  leads_count: number;
+  cost_per_result_usd: number | null;
+  source_date: string;
+  last_synced_at: string;
+};
+
+type ClassifiedAdsetRow = {
+  facebook_adset_id: string;
+  facebook_ad_account_id: string;
+  campaign_id: string | null;
+};
+
 type ManualOverride = {
   facebook_adset_id: string;
   performance_type: PerformanceType | null;
@@ -110,6 +134,7 @@ export type MessagingSyncSummary = {
 export type UserSyncSummary = {
   dashboard: DashboardSyncSummary;
   messaging: MessagingSyncSummary;
+  leads: DashboardSyncSummary;
 };
 
 const GRAPH_BASE_URL = "https://graph.facebook.com/v23.0";
@@ -233,6 +258,17 @@ async function getManualOverrides(userId: string): Promise<Map<string, ManualOve
     });
   });
   return map;
+}
+
+async function getClassifiedAdsetsForUser(userId: string, performanceType: PerformanceType) {
+  const { data, error } = await supabaseAdmin
+    .from("facebook_adsets")
+    .select("facebook_adset_id,facebook_ad_account_id,campaign_id")
+    .eq("user_id", userId)
+    .eq("performance_type", performanceType);
+
+  if (error) throw new Error(error.message);
+  return (data || []) as ClassifiedAdsetRow[];
 }
 
 function getRoundedSnapshotTime(nowIso: string) {
@@ -593,6 +629,176 @@ export async function syncUserMessagingMetrics(
   };
 }
 
+export async function syncUserLeadsMetrics(
+  userId: string,
+  token: string,
+  usdRates?: Record<string, number>
+): Promise<DashboardSyncSummary> {
+  const rates = usdRates || (await fetchUsdRates());
+  const rows = await getUserAdAccounts(userId);
+  const classifiedLeadAdsets = await getClassifiedAdsetsForUser(userId, "LEADS");
+
+  const leadAdsetsByAccount = new Map<string, Map<string, string | null>>();
+  classifiedLeadAdsets.forEach((row) => {
+    const accountMap =
+      leadAdsetsByAccount.get(row.facebook_ad_account_id) || new Map<string, string | null>();
+    accountMap.set(row.facebook_adset_id, row.campaign_id || null);
+    leadAdsetsByAccount.set(row.facebook_ad_account_id, accountMap);
+  });
+
+  let activeAccountsCount = 0;
+  let activeAdsCount = 0;
+  let totalLeads = 0;
+  const accountRows: LeadsAdAccountMetricRow[] = [];
+
+  const nowIso = new Date().toISOString();
+  const sourceDate = nowIso.slice(0, 10);
+
+  for (const ad of rows) {
+    const accountEdgeId = ad.facebook_ad_account_id.startsWith("act_")
+      ? ad.facebook_ad_account_id
+      : `act_${ad.account_id || ad.facebook_ad_account_id}`;
+
+    const leadAdsetMap = leadAdsetsByAccount.get(ad.facebook_ad_account_id) || new Map<string, string | null>();
+    if (leadAdsetMap.size === 0) continue;
+
+    const accountMeta = await fetchJson<{ account_status?: number }>(
+      `${GRAPH_BASE_URL}/${accountEdgeId}?fields=account_status&access_token=${encodeURIComponent(token)}`
+    ).catch((): { account_status?: number } => ({}));
+    const accountStatus =
+      typeof accountMeta.account_status === "number" ? accountMeta.account_status : null;
+
+    const activeAds = await graphFetchPaginated<GraphAd>(
+      `${GRAPH_BASE_URL}/${accountEdgeId}/ads?fields=id,effective_status,campaign{id,effective_status},adset{id}&limit=500&access_token=${encodeURIComponent(token)}`,
+      20
+    ).catch(() => []);
+
+    const activeAdsByAdset = new Map<string, number>();
+    activeAds.forEach((graphAd) => {
+      const adsetId = graphAd.adset?.id;
+      if (!adsetId) return;
+      const isRunning =
+        isActiveStatus(graphAd.effective_status) && isActiveStatus(graphAd.campaign?.effective_status);
+      if (!isRunning) return;
+      activeAdsByAdset.set(adsetId, (activeAdsByAdset.get(adsetId) || 0) + 1);
+    });
+
+    const adsetInsights = await graphFetchPaginated<GraphAdsetInsight>(
+      `${GRAPH_BASE_URL}/${accountEdgeId}/insights?fields=adset_id,spend,actions&level=adset&date_preset=today&limit=500&access_token=${encodeURIComponent(token)}`,
+      20
+    ).catch(() => []);
+
+    let accountSpendOriginal = 0;
+    let accountLeads = 0;
+    let accountActiveAds = 0;
+    const accountActiveCampaignIds = new Set<string>();
+
+    for (const insightRow of adsetInsights) {
+      const adsetId = insightRow.adset_id;
+      if (!adsetId || !leadAdsetMap.has(adsetId)) continue;
+
+      accountSpendOriginal += Number(insightRow.spend || 0);
+      accountLeads += parseLeadCount(insightRow.actions);
+
+      const activeAdsForAdset = activeAdsByAdset.get(adsetId) || 0;
+      accountActiveAds += activeAdsForAdset;
+
+      const campaignId = leadAdsetMap.get(adsetId);
+      if (activeAdsForAdset > 0 && campaignId) {
+        accountActiveCampaignIds.add(campaignId);
+      }
+    }
+
+    const accountSpendUsd = convertToUsd(accountSpendOriginal, ad.currency, rates);
+    const accountCostPerResult =
+      accountLeads > 0 ? Number((accountSpendUsd / accountLeads).toFixed(2)) : null;
+    const isActiveAccount = accountActiveAds > 0;
+
+    if (accountSpendOriginal <= 0 && accountLeads <= 0 && accountActiveAds <= 0) {
+      continue;
+    }
+
+    if (isActiveAccount) {
+      activeAccountsCount += 1;
+      activeAdsCount += accountActiveAds;
+    }
+
+    totalLeads += accountLeads;
+
+    accountRows.push({
+      user_id: userId,
+      facebook_ad_account_id: ad.facebook_ad_account_id,
+      account_id: ad.account_id || null,
+      account_name: ad.name || null,
+      active_campaigns_count: accountActiveCampaignIds.size,
+      active_ads_count: accountActiveAds,
+      is_active_account: isActiveAccount,
+      account_status: accountStatus,
+      spend_original: Number(accountSpendOriginal.toFixed(2)),
+      currency: ad.currency || null,
+      spend_usd: Number(accountSpendUsd.toFixed(2)),
+      leads_count: accountLeads,
+      cost_per_result_usd: accountCostPerResult,
+      source_date: sourceDate,
+      last_synced_at: nowIso,
+    });
+  }
+
+  const totalSpendUsd = accountRows.reduce((sum, row) => sum + row.spend_usd, 0);
+  const costPerResultUsd = totalLeads > 0 ? Number((totalSpendUsd / totalLeads).toFixed(2)) : null;
+
+  const { error: detailDeleteError } = await supabaseAdmin
+    .from("facebook_leads_ad_account_metrics")
+    .delete()
+    .eq("user_id", userId);
+  if (detailDeleteError) throw new Error(detailDeleteError.message);
+
+  if (accountRows.length > 0) {
+    const { error: detailInsertError } = await supabaseAdmin
+      .from("facebook_leads_ad_account_metrics")
+      .insert(accountRows);
+    if (detailInsertError) throw new Error(detailInsertError.message);
+  }
+
+  const { error: summaryUpsertError } = await supabaseAdmin.from("facebook_leads_metrics").upsert(
+    {
+      user_id: userId,
+      active_accounts_count: activeAccountsCount,
+      active_ads_count: activeAdsCount,
+      total_spend_usd: Number(totalSpendUsd.toFixed(2)),
+      total_leads: totalLeads,
+      cost_per_result_usd: costPerResultUsd,
+      source_date: sourceDate,
+      last_synced_at: nowIso,
+      updated_at: nowIso,
+    },
+    { onConflict: "user_id" }
+  );
+  if (summaryUpsertError) throw new Error(summaryUpsertError.message);
+
+  const { error: seriesError } = await supabaseAdmin.from("facebook_leads_timeseries").upsert(
+    {
+      user_id: userId,
+      snapshot_time: getRoundedSnapshotTime(nowIso),
+      source_date: sourceDate,
+      spend_usd: Number(totalSpendUsd.toFixed(2)),
+      leads_count: totalLeads,
+      cost_per_result_usd: costPerResultUsd,
+    },
+    { onConflict: "user_id,snapshot_time" }
+  );
+  if (seriesError) throw new Error(seriesError.message);
+
+  return {
+    userId,
+    activeAccountsCount,
+    activeAdsCount,
+    totalSpendUsd: Number(totalSpendUsd.toFixed(2)),
+    totalLeads,
+    costPerResultUsd,
+  };
+}
+
 export async function syncUserAllMetrics(
   userId: string,
   token: string,
@@ -601,7 +807,8 @@ export async function syncUserAllMetrics(
   const rates = usdRates || (await fetchUsdRates());
   const dashboard = await syncUserDashboardMetrics(userId, token, rates);
   const messaging = await syncUserMessagingMetrics(userId, token, rates);
-  return { dashboard, messaging };
+  const leads = await syncUserLeadsMetrics(userId, token, rates);
+  return { dashboard, messaging, leads };
 }
 
 export async function syncAllDashboardMetrics() {

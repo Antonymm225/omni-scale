@@ -3,6 +3,9 @@ import { createClient as createServerSupabaseClient } from "../../../../lib/supa
 import { supabaseAdmin } from "../../../../lib/supabase-admin";
 
 const FACEBOOK_TABLES = [
+  "facebook_leads_timeseries",
+  "facebook_leads_ad_account_metrics",
+  "facebook_leads_metrics",
   "facebook_messages_timeseries",
   "facebook_messages_ad_account_metrics",
   "facebook_messages_metrics",
