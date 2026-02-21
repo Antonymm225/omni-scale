@@ -17,6 +17,7 @@ type MessagesAdAccountMetric = {
   facebook_ad_account_id: string;
   account_id: string | null;
   account_name: string | null;
+  active_campaigns_count: number;
   active_ads_count: number;
   is_active_account: boolean;
   account_status: number | null;
@@ -73,10 +74,9 @@ export default function MensajesPage() {
     }
 
     const today = new Date();
-    const y = today.getFullYear();
-    const m = String(today.getMonth() + 1).padStart(2, "0");
-    const d = String(today.getDate()).padStart(2, "0");
-    const todayDate = `${y}-${m}-${d}`;
+    const localDayStart = new Date(today);
+    localDayStart.setHours(0, 0, 0, 0);
+    const localDayStartIso = localDayStart.toISOString();
 
     const [metricsRes, accountsRes, seriesRes] = await Promise.all([
       supabase
@@ -89,7 +89,7 @@ export default function MensajesPage() {
       supabase
         .from("facebook_messages_ad_account_metrics")
         .select(
-          "facebook_ad_account_id,account_id,account_name,active_ads_count,is_active_account,account_status,spend_original,currency,spend_usd,results_count,cost_per_result_usd"
+          "facebook_ad_account_id,account_id,account_name,active_campaigns_count,active_ads_count,is_active_account,account_status,spend_original,currency,spend_usd,results_count,cost_per_result_usd"
         )
         .eq("user_id", user.id)
         .eq("is_active_account", true)
@@ -98,7 +98,7 @@ export default function MensajesPage() {
         .from("facebook_messages_timeseries")
         .select("snapshot_time,spend_usd,results_count,cost_per_result_usd")
         .eq("user_id", user.id)
-        .eq("source_date", todayDate)
+        .gte("snapshot_time", localDayStartIso)
         .order("snapshot_time", { ascending: true }),
     ]);
 
@@ -268,6 +268,7 @@ export default function MensajesPage() {
                   <thead>
                     <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
                       <th className="pb-3 pr-4 font-semibold">Ad Account</th>
+                      <th className="pb-3 pr-4 font-semibold">Campañas activas</th>
                       <th className="pb-3 pr-4 font-semibold">Ads prendidos</th>
                       <th className="pb-3 pr-4 font-semibold">Gasto día (divisa)</th>
                       <th className="pb-3 pr-4 font-semibold">Resultados (mensajes)</th>
@@ -277,7 +278,7 @@ export default function MensajesPage() {
                   <tbody>
                     {accountRows.length === 0 ? (
                       <tr>
-                        <td colSpan={5} className="py-6 text-sm text-slate-500">
+                        <td colSpan={6} className="py-6 text-sm text-slate-500">
                           Aún no hay ad accounts con mensajes para hoy.
                         </td>
                       </tr>
@@ -291,6 +292,7 @@ export default function MensajesPage() {
                             </div>
                             <p className="text-xs text-slate-500">ID: {row.account_id || row.facebook_ad_account_id}</p>
                           </td>
+                          <td className="py-3 pr-4 text-sm text-[#1D293D]">{row.active_campaigns_count}</td>
                           <td className="py-3 pr-4 text-sm text-[#1D293D]">{row.active_ads_count}</td>
                           <td className="py-3 pr-4 text-sm font-semibold text-[#1D293D]">
                             {formatLocalCurrency(row.spend_original || 0, row.currency)}

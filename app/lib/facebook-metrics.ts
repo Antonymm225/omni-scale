@@ -24,6 +24,10 @@ type GraphInsight = {
   actions?: Array<{ action_type?: string; value?: string }>;
 };
 
+type GraphAdsetInsight = GraphInsight & {
+  adset_id?: string;
+};
+
 type GraphAdset = {
   id: string;
   name?: string;
@@ -47,6 +51,7 @@ type DashboardAdAccountMetricRow = {
   facebook_ad_account_id: string;
   account_id: string | null;
   account_name: string | null;
+  active_campaigns_count: number;
   active_ads_count: number;
   is_active_account: boolean;
   account_status: number | null;
@@ -64,6 +69,7 @@ type MessagingAdAccountMetricRow = {
   facebook_ad_account_id: string;
   account_id: string | null;
   account_name: string | null;
+  active_campaigns_count: number;
   active_ads_count: number;
   is_active_account: boolean;
   account_status: number | null;
@@ -267,8 +273,12 @@ export async function syncUserDashboardMetrics(
         isActiveStatus(adRow.effective_status) &&
         isActiveStatus(adRow.campaign?.effective_status)
     );
+    const activeCampaignIds = new Set(
+      realActiveAds.map((adRow) => adRow.campaign?.id).filter(Boolean) as string[]
+    );
 
     const accountActiveAdsCount = realActiveAds.length;
+    const accountActiveCampaignsCount = activeCampaignIds.size;
     const isActiveAccount = accountActiveAdsCount > 0;
 
     const accountMeta = await fetchJson<{ account_status?: number }>(
@@ -300,6 +310,7 @@ export async function syncUserDashboardMetrics(
       facebook_ad_account_id: ad.facebook_ad_account_id,
       account_id: ad.account_id || null,
       account_name: ad.name || null,
+      active_campaigns_count: accountActiveCampaignsCount,
       active_ads_count: accountActiveAdsCount,
       is_active_account: isActiveAccount,
       account_status: accountStatus,
@@ -417,16 +428,25 @@ export async function syncUserMessagingMetrics(
       20
     ).catch(() => []);
 
+    const adsetInsights = await graphFetchPaginated<GraphAdsetInsight>(
+      `${GRAPH_BASE_URL}/${accountEdgeId}/insights?fields=adset_id,spend,actions&level=adset&date_preset=today&limit=500&access_token=${encodeURIComponent(token)}`,
+      20
+    ).catch(() => []);
+
+    const adsetInsightMap = new Map<string, GraphAdsetInsight>();
+    adsetInsights.forEach((insightRow) => {
+      if (insightRow.adset_id) {
+        adsetInsightMap.set(insightRow.adset_id, insightRow);
+      }
+    });
+
     let accountSpendOriginal = 0;
     let accountResults = 0;
     let accountActiveAds = 0;
+    const accountActiveCampaignIds = new Set<string>();
 
     for (const adset of adsets) {
-      const insights = await fetchJson<GraphPagingResponse<GraphInsight>>(
-        `${GRAPH_BASE_URL}/${adset.id}/insights?fields=spend,actions&date_preset=today&limit=1&access_token=${encodeURIComponent(token)}`
-      ).catch(() => ({ data: [] }));
-
-      const insightRow = insights.data?.[0];
+      const insightRow = adsetInsightMap.get(adset.id);
       const spendValue = Number(insightRow?.spend || 0);
       const messagingResults = parseMessagingResultCount(insightRow?.actions);
 
@@ -476,7 +496,11 @@ export async function syncUserMessagingMetrics(
 
       accountSpendOriginal += spendValue;
       accountResults += messagingResults;
-      accountActiveAds += activeAdsByAdset.get(adset.id) || 0;
+      const activeAdsForAdset = activeAdsByAdset.get(adset.id) || 0;
+      accountActiveAds += activeAdsForAdset;
+      if (activeAdsForAdset > 0 && adset.campaign?.id) {
+        accountActiveCampaignIds.add(adset.campaign.id);
+      }
     }
 
     const accountSpendUsd = convertToUsd(accountSpendOriginal, ad.currency, rates);
@@ -500,6 +524,7 @@ export async function syncUserMessagingMetrics(
       facebook_ad_account_id: ad.facebook_ad_account_id,
       account_id: ad.account_id || null,
       account_name: ad.name || null,
+      active_campaigns_count: accountActiveCampaignIds.size,
       active_ads_count: accountActiveAds,
       is_active_account: isActiveAccount,
       account_status: accountStatus,
