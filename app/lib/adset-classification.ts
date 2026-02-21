@@ -53,6 +53,8 @@ const LEAD_ACTIONS = [
   "offsite_conversion.lead",
 ];
 const MESSAGING_ACTIONS = [
+  "messages_started_7d",
+  "onsite_conversion.messages_started_7d",
   "onsite_conversion.messaging_conversation_started",
   "onsite_conversion.messaging_conversation_started_7d",
   "messaging_conversation_started_7d",
@@ -145,6 +147,20 @@ export function classifyAdset(
 export function parseMessagingResultCount(actions?: Action[]) {
   if (!actions || actions.length === 0) return 0;
 
+  // Primary metric requested for messaging performance.
+  const exactMessagesStarted7d = actions
+    .filter((action) => {
+      const actionType = (action.action_type || "").toLowerCase();
+      return (
+        actionType === "messages_started_7d" ||
+        actionType === "onsite_conversion.messages_started_7d"
+      );
+    })
+    .reduce((sum, action) => sum + Number(action.value || 0), 0);
+
+  if (exactMessagesStarted7d > 0) return exactMessagesStarted7d;
+
+  // Fallback for accounts returning legacy messaging action types.
   return actions.reduce((sum, action) => {
     const actionType = (action.action_type || "").toLowerCase();
     const isMessaging = MESSAGING_ACTIONS.some((pattern) => actionType === pattern.toLowerCase());
