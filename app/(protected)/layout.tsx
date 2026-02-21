@@ -19,6 +19,7 @@ type NavSection = {
 type SidebarProfile = {
   name: string;
   email: string;
+  avatarUrl: string | null;
 };
 
 const NAV_SECTIONS: NavSection[] = [
@@ -269,6 +270,7 @@ export default function ProtectedLayout({
   const [profile, setProfile] = useState<SidebarProfile>({
     name: "Usuario",
     email: "",
+    avatarUrl: null,
   });
 
   const handleMenuMouseMove = (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -280,6 +282,22 @@ export default function ProtectedLayout({
   };
 
   useEffect(() => {
+    const mapUserProfile = (user: {
+      email?: string | null;
+      user_metadata?: { full_name?: string; name?: string; avatar_url?: string };
+    }): SidebarProfile => {
+      const fullName =
+        (user.user_metadata?.full_name as string | undefined) ||
+        (user.user_metadata?.name as string | undefined) ||
+        user.email?.split("@")[0] ||
+        "Usuario";
+      return {
+        name: fullName,
+        email: user.email || "",
+        avatarUrl: user.user_metadata?.avatar_url || null,
+      };
+    };
+
     const checkSession = async () => {
       const { data, error } = await supabase.auth.getSession();
 
@@ -289,20 +307,21 @@ export default function ProtectedLayout({
       }
 
       const user = data.session.user;
-      const fullName =
-        (user.user_metadata?.full_name as string | undefined) ||
-        (user.user_metadata?.name as string | undefined) ||
-        user.email?.split("@")[0] ||
-        "Usuario";
-      setProfile({
-        name: fullName,
-        email: user.email || "",
-      });
+      setProfile(mapUserProfile(user));
 
       setLoading(false);
     };
 
     void checkSession();
+
+    const { data: authSubscription } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!session?.user) return;
+      setProfile(mapUserProfile(session.user));
+    });
+
+    return () => {
+      authSubscription.subscription.unsubscribe();
+    };
   }, [router]);
 
   if (loading) {
@@ -369,9 +388,17 @@ export default function ProtectedLayout({
                   : "text-slate-700 hover:bg-slate-100"
               }`}
             >
-              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1D293D] text-xs font-semibold text-white">
-                {initials || "U"}
-              </span>
+              {profile.avatarUrl ? (
+                <img
+                  src={profile.avatarUrl}
+                  alt="Foto de perfil"
+                  className="h-9 w-9 shrink-0 rounded-full border border-slate-200 object-cover"
+                />
+              ) : (
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#1D293D] text-xs font-semibold text-white">
+                  {initials || "U"}
+                </span>
+              )}
               <span className="min-w-0">
                 <span className="block truncate text-sm font-semibold">{profile.name}</span>
                 <span className="block truncate text-xs text-slate-500">{profile.email}</span>
