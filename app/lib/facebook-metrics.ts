@@ -100,6 +100,24 @@ type LeadsAdAccountMetricRow = {
   last_synced_at: string;
 };
 
+type BrandingAdAccountMetricRow = {
+  user_id: string;
+  facebook_ad_account_id: string;
+  account_id: string | null;
+  account_name: string | null;
+  active_campaigns_count: number;
+  active_ads_count: number;
+  is_active_account: boolean;
+  account_status: number | null;
+  spend_original: number;
+  currency: string | null;
+  spend_usd: number;
+  results_count: number;
+  cost_per_result_usd: number | null;
+  source_date: string;
+  last_synced_at: string;
+};
+
 type ClassifiedAdsetRow = {
   facebook_adset_id: string;
   facebook_ad_account_id: string;
@@ -131,10 +149,20 @@ export type MessagingSyncSummary = {
   costPerResultUsd: number | null;
 };
 
+export type BrandingSyncSummary = {
+  userId: string;
+  activeAccountsCount: number;
+  activeAdsCount: number;
+  totalSpendUsd: number;
+  totalResults: number;
+  costPerResultUsd: number | null;
+};
+
 export type UserSyncSummary = {
   dashboard: DashboardSyncSummary;
   messaging: MessagingSyncSummary;
   leads: DashboardSyncSummary;
+  branding: BrandingSyncSummary;
 };
 
 const GRAPH_BASE_URL = "https://graph.facebook.com/v23.0";
@@ -229,6 +257,47 @@ function parseLeadCount(actions?: Array<{ action_type?: string; value?: string }
 
   if (leadLike.length === 0) return 0;
   return Math.max(...leadLike.map((item) => item.value));
+}
+
+function parseBrandingResultCount(actions?: Array<{ action_type?: string; value?: string }>) {
+  if (!actions || actions.length === 0) return 0;
+
+  const normalized = actions.map((action) => ({
+    type: (action.action_type || "").toLowerCase(),
+    value: Number(action.value || 0),
+  }));
+
+  const precedence = [
+    "post_engagement",
+    "page_engagement",
+    "link_click",
+    "landing_page_view",
+    "video_view",
+    "thruplay",
+    "page_like",
+    "page_follow",
+    "post_reaction",
+    "post_comment",
+    "post",
+  ];
+
+  for (const actionType of precedence) {
+    const match = normalized.find((item) => item.type === actionType);
+    if (match) return match.value;
+  }
+
+  const brandingLike = normalized.filter(
+    (item) =>
+      item.type.includes("engagement") ||
+      item.type.includes("video_view") ||
+      item.type.includes("thruplay") ||
+      item.type.includes("like") ||
+      item.type.includes("follow") ||
+      item.type.includes("link_click")
+  );
+
+  if (brandingLike.length === 0) return 0;
+  return Math.max(...brandingLike.map((item) => item.value));
 }
 
 async function getUserAdAccounts(userId: string) {
@@ -816,6 +885,177 @@ export async function syncUserLeadsMetrics(
   };
 }
 
+export async function syncUserBrandingMetrics(
+  userId: string,
+  token: string,
+  usdRates?: Record<string, number>
+): Promise<BrandingSyncSummary> {
+  const rates = usdRates || (await fetchUsdRates());
+  const rows = await getUserAdAccounts(userId);
+  const classifiedBrandingAdsets = await getClassifiedAdsetsForUser(userId, "AWARENESS");
+
+  const brandingAdsetsByAccount = new Map<string, Map<string, string | null>>();
+  classifiedBrandingAdsets.forEach((row) => {
+    const accountMap =
+      brandingAdsetsByAccount.get(row.facebook_ad_account_id) || new Map<string, string | null>();
+    accountMap.set(row.facebook_adset_id, row.campaign_id || null);
+    brandingAdsetsByAccount.set(row.facebook_ad_account_id, accountMap);
+  });
+
+  let activeAccountsCount = 0;
+  let activeAdsCount = 0;
+  let totalResults = 0;
+  const accountRows: BrandingAdAccountMetricRow[] = [];
+
+  const nowIso = new Date().toISOString();
+  const sourceDate = nowIso.slice(0, 10);
+
+  for (const ad of rows) {
+    const accountEdgeId = ad.facebook_ad_account_id.startsWith("act_")
+      ? ad.facebook_ad_account_id
+      : `act_${ad.account_id || ad.facebook_ad_account_id}`;
+
+    const brandingAdsetMap =
+      brandingAdsetsByAccount.get(ad.facebook_ad_account_id) || new Map<string, string | null>();
+    if (brandingAdsetMap.size === 0) continue;
+
+    const accountMeta = await fetchJson<{ account_status?: number }>(
+      `${GRAPH_BASE_URL}/${accountEdgeId}?fields=account_status&access_token=${encodeURIComponent(token)}`
+    ).catch((): { account_status?: number } => ({}));
+    const accountStatus =
+      typeof accountMeta.account_status === "number" ? accountMeta.account_status : null;
+
+    const activeAds = await graphFetchPaginated<GraphAd>(
+      `${GRAPH_BASE_URL}/${accountEdgeId}/ads?fields=id,effective_status,campaign{id,effective_status},adset{id}&limit=500&access_token=${encodeURIComponent(token)}`,
+      20
+    ).catch(() => []);
+
+    const activeAdsByAdset = new Map<string, number>();
+    activeAds.forEach((graphAd) => {
+      const adsetId = graphAd.adset?.id;
+      if (!adsetId) return;
+      const isRunning =
+        isActiveStatus(graphAd.effective_status) && isActiveStatus(graphAd.campaign?.effective_status);
+      if (!isRunning) return;
+      activeAdsByAdset.set(adsetId, (activeAdsByAdset.get(adsetId) || 0) + 1);
+    });
+
+    const adsetInsights = await graphFetchPaginated<GraphAdsetInsight>(
+      `${GRAPH_BASE_URL}/${accountEdgeId}/insights?fields=adset_id,spend,actions&level=adset&date_preset=today&limit=500&access_token=${encodeURIComponent(token)}`,
+      20
+    ).catch(() => []);
+
+    let accountSpendOriginal = 0;
+    let accountResults = 0;
+    let accountActiveAds = 0;
+    const accountActiveCampaignIds = new Set<string>();
+
+    for (const insightRow of adsetInsights) {
+      const adsetId = insightRow.adset_id;
+      if (!adsetId || !brandingAdsetMap.has(adsetId)) continue;
+
+      accountSpendOriginal += Number(insightRow.spend || 0);
+      accountResults += parseBrandingResultCount(insightRow.actions);
+
+      const activeAdsForAdset = activeAdsByAdset.get(adsetId) || 0;
+      accountActiveAds += activeAdsForAdset;
+
+      const campaignId = brandingAdsetMap.get(adsetId);
+      if (activeAdsForAdset > 0 && campaignId) {
+        accountActiveCampaignIds.add(campaignId);
+      }
+    }
+
+    const accountSpendUsd = convertToUsd(accountSpendOriginal, ad.currency, rates);
+    const accountCostPerResult =
+      accountResults > 0 ? Number((accountSpendUsd / accountResults).toFixed(2)) : null;
+    const isActiveAccount = accountActiveAds > 0;
+
+    if (accountSpendOriginal <= 0 && accountResults <= 0 && accountActiveAds <= 0) {
+      continue;
+    }
+
+    if (isActiveAccount) {
+      activeAccountsCount += 1;
+      activeAdsCount += accountActiveAds;
+    }
+
+    totalResults += accountResults;
+
+    accountRows.push({
+      user_id: userId,
+      facebook_ad_account_id: ad.facebook_ad_account_id,
+      account_id: ad.account_id || null,
+      account_name: ad.name || null,
+      active_campaigns_count: accountActiveCampaignIds.size,
+      active_ads_count: accountActiveAds,
+      is_active_account: isActiveAccount,
+      account_status: accountStatus,
+      spend_original: Number(accountSpendOriginal.toFixed(2)),
+      currency: ad.currency || null,
+      spend_usd: Number(accountSpendUsd.toFixed(2)),
+      results_count: accountResults,
+      cost_per_result_usd: accountCostPerResult,
+      source_date: sourceDate,
+      last_synced_at: nowIso,
+    });
+  }
+
+  const totalSpendUsd = accountRows.reduce((sum, row) => sum + row.spend_usd, 0);
+  const costPerResultUsd = totalResults > 0 ? Number((totalSpendUsd / totalResults).toFixed(2)) : null;
+
+  const { error: detailDeleteError } = await supabaseAdmin
+    .from("facebook_branding_ad_account_metrics")
+    .delete()
+    .eq("user_id", userId);
+  if (detailDeleteError) throw new Error(detailDeleteError.message);
+
+  if (accountRows.length > 0) {
+    const { error: detailInsertError } = await supabaseAdmin
+      .from("facebook_branding_ad_account_metrics")
+      .insert(accountRows);
+    if (detailInsertError) throw new Error(detailInsertError.message);
+  }
+
+  const { error: summaryUpsertError } = await supabaseAdmin.from("facebook_branding_metrics").upsert(
+    {
+      user_id: userId,
+      active_accounts_count: activeAccountsCount,
+      active_ads_count: activeAdsCount,
+      total_spend_usd: Number(totalSpendUsd.toFixed(2)),
+      total_results: totalResults,
+      cost_per_result_usd: costPerResultUsd,
+      source_date: sourceDate,
+      last_synced_at: nowIso,
+      updated_at: nowIso,
+    },
+    { onConflict: "user_id" }
+  );
+  if (summaryUpsertError) throw new Error(summaryUpsertError.message);
+
+  const { error: seriesError } = await supabaseAdmin.from("facebook_branding_timeseries").upsert(
+    {
+      user_id: userId,
+      snapshot_time: getRoundedSnapshotTime(nowIso),
+      source_date: sourceDate,
+      spend_usd: Number(totalSpendUsd.toFixed(2)),
+      results_count: totalResults,
+      cost_per_result_usd: costPerResultUsd,
+    },
+    { onConflict: "user_id,snapshot_time" }
+  );
+  if (seriesError) throw new Error(seriesError.message);
+
+  return {
+    userId,
+    activeAccountsCount,
+    activeAdsCount,
+    totalSpendUsd: Number(totalSpendUsd.toFixed(2)),
+    totalResults,
+    costPerResultUsd,
+  };
+}
+
 export async function syncUserAllMetrics(
   userId: string,
   token: string,
@@ -825,7 +1065,8 @@ export async function syncUserAllMetrics(
   const dashboard = await syncUserDashboardMetrics(userId, token, rates);
   const messaging = await syncUserMessagingMetrics(userId, token, rates);
   const leads = await syncUserLeadsMetrics(userId, token, rates);
-  return { dashboard, messaging, leads };
+  const branding = await syncUserBrandingMetrics(userId, token, rates);
+  return { dashboard, messaging, leads, branding };
 }
 
 export async function syncAllDashboardMetrics() {
