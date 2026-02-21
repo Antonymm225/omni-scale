@@ -84,9 +84,9 @@ const RANGE_OPTIONS: Array<{ key: RangeKey; label: string }> = [
 ];
 
 function formatDateLocal(date: Date) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(date.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
 
@@ -99,7 +99,7 @@ function addDays(date: Date, days: number) {
 function buildRange(range: RangeKey) {
   const now = new Date();
   const todayStart = new Date(now);
-  todayStart.setHours(0, 0, 0, 0);
+  todayStart.setUTCHours(0, 0, 0, 0);
 
   let start = todayStart;
   let endExclusive = addDays(todayStart, 1);
@@ -120,8 +120,6 @@ function buildRange(range: RangeKey) {
   return {
     startDate: formatDateLocal(start),
     endDate: formatDateLocal(addDays(endExclusive, -1)),
-    startIso: start.toISOString(),
-    endIsoExclusive: endExclusive.toISOString(),
     xMode: range === "today" || range === "yesterday" ? ("hour" as XMode) : ("day" as XMode),
   };
 }
@@ -173,8 +171,8 @@ export default function PerformanceCategoryPage(props: Props) {
         .from(props.timeseriesTable)
         .select(`snapshot_time,source_date,spend_usd,cost_per_result_usd,${props.timeseriesResultField}`)
         .eq("user_id", user.id)
-        .gte("snapshot_time", rangeInfo.startIso)
-        .lt("snapshot_time", rangeInfo.endIsoExclusive)
+        .gte("source_date", rangeInfo.startDate)
+        .lte("source_date", rangeInfo.endDate)
         .order("snapshot_time", { ascending: true }),
     ]);
 
