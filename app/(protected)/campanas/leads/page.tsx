@@ -16,7 +16,7 @@ export default function LeadsPage() {
       accountResultField="leads_count"
       timeseriesTable="facebook_leads_timeseries"
       timeseriesResultField="leads_count"
+      tooltipResultsLabel="Leads"
     />
   );
 }
-

@@ -16,7 +16,7 @@ export default function MensajesPage() {
       accountResultField="results_count"
       timeseriesTable="facebook_messages_timeseries"
       timeseriesResultField="results_count"
+      tooltipResultsLabel="Mensajes"
     />
   );
 }
-

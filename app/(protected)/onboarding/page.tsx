@@ -5,7 +5,7 @@ export default function OnboardingPage() {
     <main className="px-4 py-6 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-6xl">
         <header>
-          <h2 className="text-4xl font-bold text-[#111827]">Get Started</h2>
+          <h2 className="text-4xl font-bold text-[#111827]">Onboarding</h2>
           <p className="mt-2 text-lg text-slate-600">
             Completa estos pasos para lanzar campañas a escala.
           </p>
@@ -34,20 +34,20 @@ export default function OnboardingPage() {
 
         <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <StepRow
-            title="Conectar cuenta Meta"
-            description="Tu cuenta de Meta está conectada"
+            title="Seleccionar Plan de Omni Scale"
+            description="Tu plan es el Standard"
             status="ok"
             actionLabel="Ver"
           />
           <StepRow
-            title="Conectar cuenta publicitaria"
-            description="La cuenta publicitaria ya está vinculada"
+            title="Conectar tu cuenta de Facebook"
+            description="Nos permitirá ver tus activos publicitarios y rendimiento"
             status="ok"
             actionLabel="Ver"
           />
           <StepRow
-            title="Importar campañas"
-            description="Importa campañas existentes para análisis de IA"
+            title="Agregar Credenciales IA"
+            description="Agrega tu Clave Api Key de Open Ai para analizar tu rendimiento"
             status="todo"
             actionLabel="Iniciar"
           />

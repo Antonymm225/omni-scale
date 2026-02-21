@@ -16,6 +16,7 @@ export default function DashboardPage() {
       accountResultField="leads_count"
       timeseriesTable="facebook_dashboard_timeseries"
       timeseriesResultField="leads_count"
+      tooltipResultsLabel="Resultados"
       onlyRunningAccounts
     />
   );

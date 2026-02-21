@@ -16,7 +16,7 @@ export default function BrandingPage() {
       accountResultField="results_count"
       timeseriesTable="facebook_branding_timeseries"
       timeseriesResultField="results_count"
+      tooltipResultsLabel="Resultados"
     />
   );
 }
-

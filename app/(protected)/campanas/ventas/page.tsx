@@ -16,7 +16,7 @@ export default function VentasPage() {
       accountResultField="results_count"
       timeseriesTable="facebook_sales_timeseries"
       timeseriesResultField="results_count"
+      tooltipResultsLabel="Ventas"
     />
   );
 }
-

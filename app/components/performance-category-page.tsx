@@ -75,6 +75,7 @@ type Props = {
   timeseriesTable: string;
   timeseriesResultField: string;
   onlyRunningAccounts?: boolean;
+  tooltipResultsLabel?: string;
 };
 
 const RANGE_OPTIONS: Array<{ key: RangeKey; label: string }> = [
@@ -371,7 +372,11 @@ export default function PerformanceCategoryPage(props: Props) {
             subtitle={`Rango: ${RANGE_OPTIONS.find((o) => o.key === range)?.label}`}
           />
           <MetricCard
-            title={`Resultados (${props.resultTerm.toLowerCase()})`}
+            title={
+              props.resultTerm.toLowerCase() === "resultados"
+                ? "Resultados"
+                : `Resultados (${props.resultTerm.toLowerCase()})`
+            }
             value={summary?.totalResults ?? 0}
             subtitle={props.resultSubtitle}
           />
@@ -397,18 +402,24 @@ export default function PerformanceCategoryPage(props: Props) {
             </p>
           </div>
           <div className="relative mt-4 h-[320px] w-full rounded-xl border border-slate-100 bg-white p-3">
-            <GenericLineChart series={series} onHover={setTooltip} tooltip={tooltip} xMode={rangeInfo.xMode} />
+            <GenericLineChart
+              series={series}
+              onHover={setTooltip}
+              tooltip={tooltip}
+              xMode={rangeInfo.xMode}
+              resultLabel={props.tooltipResultsLabel || props.resultTerm}
+            />
             {tooltip ? (
               <div
-                className="pointer-events-none absolute z-20 rounded-lg bg-[#0f172a] px-3 py-2 text-xs text-slate-100 shadow-xl"
+                className="pointer-events-none absolute z-20 w-max rounded-xl bg-[#0f172a] px-2 py-3 text-xs text-slate-100 shadow-xl"
                 style={{ left: `${tooltip.x}px`, top: `${tooltip.y}px` }}
               >
-                <p className="font-semibold text-white">{tooltip.label}</p>
-                {tooltip.metric === "spend" ? <p>Gasto: {formatUsd(tooltip.spendUsd)}</p> : null}
-                {tooltip.metric === "results" ? <p>Resultados: {tooltip.results}</p> : null}
-                {tooltip.metric === "cpr" ? (
-                  <p>Costo/resultado: {tooltip.cpr != null ? formatUsd(tooltip.cpr) : "-"}</p>
-                ) : null}
+                <p className="px-4 font-semibold text-white">{tooltip.label}</p>
+                <div className="mt-1 space-y-1">
+                  <p className="px-4">Gasto: {formatUsd(tooltip.spendUsd)}</p>
+                  <p className="px-4">{props.tooltipResultsLabel || props.resultTerm}: {tooltip.results}</p>
+                  <p className="px-4">Costo: {tooltip.cpr != null ? formatUsd(tooltip.cpr) : "-"}</p>
+                </div>
               </div>
             ) : null}
           </div>
@@ -499,11 +510,13 @@ function GenericLineChart({
   onHover,
   tooltip,
   xMode,
+  resultLabel: _resultLabel,
 }: {
   series: SeriesPoint[];
   onHover: (tooltip: ChartTooltip | null) => void;
   tooltip: ChartTooltip | null;
   xMode: XMode;
+  resultLabel: string;
 }) {
   const width = 980;
   const height = 280;
