@@ -74,6 +74,7 @@ type Props = {
   accountResultField: string;
   timeseriesTable: string;
   timeseriesResultField: string;
+  onlyRunningAccounts?: boolean;
 };
 
 const RANGE_OPTIONS: Array<{ key: RangeKey; label: string }> = [
@@ -236,7 +237,10 @@ export default function PerformanceCategoryPage(props: Props) {
       }
     });
 
-    const aggregatedAccounts = Array.from(aggregatedMap.values()).sort((a, b) => b.spend_usd - a.spend_usd);
+    let aggregatedAccounts = Array.from(aggregatedMap.values()).sort((a, b) => b.spend_usd - a.spend_usd);
+    if (props.onlyRunningAccounts) {
+      aggregatedAccounts = aggregatedAccounts.filter((row) => row.active_ads_count > 0);
+    }
 
     const rawSeries = ((seriesRes.data as unknown as RawSeriesRow[]) || []).map((row) => ({
       snapshot_time: row.snapshot_time,
