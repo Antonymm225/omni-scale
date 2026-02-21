@@ -1,7 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import { createClient as createServerSupabaseClient } from "../../../../lib/supabase-server";
 import { supabaseAdmin } from "../../../../lib/supabase-admin";
-import { syncUserDashboardMetrics } from "../../../../lib/facebook-metrics";
+import { syncUserAllMetrics } from "../../../../lib/facebook-metrics";
 
 export async function POST() {
   try {
@@ -29,7 +29,7 @@ export async function POST() {
       return NextResponse.json({ error: "No hay conexión activa con Facebook" }, { status: 400 });
     }
 
-    const summary = await syncUserDashboardMetrics(user.id, connection.access_token);
+    const summary = await syncUserAllMetrics(user.id, connection.access_token);
     return NextResponse.json({ ok: true, summary });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "No se pudo sincronizar";
