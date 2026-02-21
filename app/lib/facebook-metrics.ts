@@ -142,6 +142,24 @@ type BrandingAdAccountMetricRow = {
   last_synced_at: string;
 };
 
+type SalesAdAccountMetricRow = {
+  user_id: string;
+  facebook_ad_account_id: string;
+  account_id: string | null;
+  account_name: string | null;
+  active_campaigns_count: number;
+  active_ads_count: number;
+  is_active_account: boolean;
+  account_status: number | null;
+  spend_original: number;
+  currency: string | null;
+  spend_usd: number;
+  results_count: number;
+  cost_per_result_usd: number | null;
+  source_date: string;
+  last_synced_at: string;
+};
+
 type ClassifiedAdsetRow = {
   facebook_adset_id: string;
   facebook_ad_account_id: string;
@@ -187,6 +205,7 @@ export type UserSyncSummary = {
   messaging: MessagingSyncSummary;
   leads: DashboardSyncSummary;
   branding: BrandingSyncSummary;
+  sales: BrandingSyncSummary;
   monitoring: { userId: string; entitiesTracked: number };
 };
 
@@ -352,6 +371,30 @@ function parseUnifiedResultCount(actions?: Array<{ action_type?: string; value?:
   return Math.max(...normalized.map((item) => item.value), 0);
 }
 
+function parseSalesResultCount(actions?: Array<{ action_type?: string; value?: string }>) {
+  if (!actions || actions.length === 0) return 0;
+
+  const normalized = actions.map((action) => ({
+    type: (action.action_type || "").toLowerCase(),
+    value: Number(action.value || 0),
+  }));
+
+  const precedence = [
+    "purchase",
+    "offsite_conversion.fb_pixel_purchase",
+    "omni_purchase",
+  ];
+
+  for (const actionType of precedence) {
+    const match = normalized.find((item) => item.type === actionType);
+    if (match) return match.value;
+  }
+
+  const purchaseLike = normalized.filter((item) => item.type.includes("purchase"));
+  if (purchaseLike.length === 0) return 0;
+  return Math.max(...purchaseLike.map((item) => item.value));
+}
+
 type MonitoringTrend = "improving" | "stable" | "worsening";
 type MonitoringHealth = "good" | "watch" | "bad";
 
@@ -450,6 +493,76 @@ function getRoundedSnapshotTime(nowIso: string) {
   return roundedNow.toISOString();
 }
 
+function formatDateUtc(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+async function applyTimeseriesRetention(table: string, userId: string, nowIso: string) {
+  const now = new Date(nowIso);
+  const cutoff = new Date(now);
+  cutoff.setUTCDate(cutoff.getUTCDate() - 7);
+  const cutoffIso = cutoff.toISOString();
+
+  const { error: deleteOldError } = await supabaseAdmin
+    .from(table)
+    .delete()
+    .eq("user_id", userId)
+    .lt("snapshot_time", cutoffIso);
+  if (deleteOldError) throw new Error(deleteOldError.message);
+
+  const yesterdayStart = new Date(now);
+  yesterdayStart.setUTCHours(0, 0, 0, 0);
+  yesterdayStart.setUTCDate(yesterdayStart.getUTCDate() - 1);
+  const yesterdayStartIso = yesterdayStart.toISOString();
+
+  const { data: oldRows, error: oldRowsError } = await supabaseAdmin
+    .from(table)
+    .select("id,source_date,snapshot_time")
+    .eq("user_id", userId)
+    .lt("snapshot_time", yesterdayStartIso)
+    .gte("snapshot_time", cutoffIso)
+    .order("source_date", { ascending: true })
+    .order("snapshot_time", { ascending: false });
+
+  if (oldRowsError) throw new Error(oldRowsError.message);
+
+  const keepByDate = new Set<string>();
+  const deleteIds: string[] = [];
+
+  (oldRows || []).forEach((row) => {
+    const dateKey = row.source_date as string;
+    const id = row.id as string;
+    if (!keepByDate.has(dateKey)) {
+      keepByDate.add(dateKey);
+      return;
+    }
+    deleteIds.push(id);
+  });
+
+  if (deleteIds.length > 0) {
+    const { error: deleteCompactedError } = await supabaseAdmin
+      .from(table)
+      .delete()
+      .in("id", deleteIds);
+    if (deleteCompactedError) throw new Error(deleteCompactedError.message);
+  }
+}
+
+async function applyDailyRetention(table: string, userId: string, nowIso: string) {
+  const now = new Date(nowIso);
+  const cutoff = new Date(now);
+  cutoff.setUTCDate(cutoff.getUTCDate() - 7);
+  const cutoffDate = formatDateUtc(cutoff);
+
+  const { error } = await supabaseAdmin
+    .from(table)
+    .delete()
+    .eq("user_id", userId)
+    .lt("source_date", cutoffDate);
+
+  if (error) throw new Error(error.message);
+}
+
 export async function syncUserDashboardMetrics(
   userId: string,
   token: string,
@@ -534,18 +647,13 @@ export async function syncUserDashboardMetrics(
   const totalSpendUsd = detailRows.reduce((sum, row) => sum + row.spend_usd, 0);
   const costPerResultUsd = totalLeads > 0 ? Number((totalSpendUsd / totalLeads).toFixed(2)) : null;
 
-  const { error: detailDeleteError } = await supabaseAdmin
-    .from("facebook_dashboard_ad_account_metrics")
-    .delete()
-    .eq("user_id", userId);
-  if (detailDeleteError) throw new Error(detailDeleteError.message);
-
   if (detailRows.length > 0) {
-    const { error: detailInsertError } = await supabaseAdmin
+    const { error: detailUpsertError } = await supabaseAdmin
       .from("facebook_dashboard_ad_account_metrics")
-      .insert(detailRows);
-    if (detailInsertError) throw new Error(detailInsertError.message);
+      .upsert(detailRows, { onConflict: "user_id,facebook_ad_account_id,source_date" });
+    if (detailUpsertError) throw new Error(detailUpsertError.message);
   }
+  await applyDailyRetention("facebook_dashboard_ad_account_metrics", userId, nowIso);
 
   const { error: upsertError } = await supabaseAdmin.from("facebook_dashboard_metrics").upsert(
     {
@@ -575,6 +683,7 @@ export async function syncUserDashboardMetrics(
     { onConflict: "user_id,snapshot_time" }
   );
   if (seriesError) throw new Error(seriesError.message);
+  await applyTimeseriesRetention("facebook_dashboard_timeseries", userId, nowIso);
 
   return {
     userId,
@@ -748,18 +857,13 @@ export async function syncUserMessagingMetrics(
   const totalSpendUsd = accountRows.reduce((sum, row) => sum + row.spend_usd, 0);
   const costPerResultUsd = totalResults > 0 ? Number((totalSpendUsd / totalResults).toFixed(2)) : null;
 
-  const { error: detailDeleteError } = await supabaseAdmin
-    .from("facebook_messages_ad_account_metrics")
-    .delete()
-    .eq("user_id", userId);
-  if (detailDeleteError) throw new Error(detailDeleteError.message);
-
   if (accountRows.length > 0) {
-    const { error: detailInsertError } = await supabaseAdmin
+    const { error: detailUpsertError } = await supabaseAdmin
       .from("facebook_messages_ad_account_metrics")
-      .insert(accountRows);
-    if (detailInsertError) throw new Error(detailInsertError.message);
+      .upsert(accountRows, { onConflict: "user_id,facebook_ad_account_id,source_date" });
+    if (detailUpsertError) throw new Error(detailUpsertError.message);
   }
+  await applyDailyRetention("facebook_messages_ad_account_metrics", userId, nowIso);
 
   const { error: summaryUpsertError } = await supabaseAdmin.from("facebook_messages_metrics").upsert(
     {
@@ -789,6 +893,7 @@ export async function syncUserMessagingMetrics(
     { onConflict: "user_id,snapshot_time" }
   );
   if (seriesError) throw new Error(seriesError.message);
+  await applyTimeseriesRetention("facebook_messages_timeseries", userId, nowIso);
 
   return {
     userId,
@@ -918,18 +1023,13 @@ export async function syncUserLeadsMetrics(
   const totalSpendUsd = accountRows.reduce((sum, row) => sum + row.spend_usd, 0);
   const costPerResultUsd = totalLeads > 0 ? Number((totalSpendUsd / totalLeads).toFixed(2)) : null;
 
-  const { error: detailDeleteError } = await supabaseAdmin
-    .from("facebook_leads_ad_account_metrics")
-    .delete()
-    .eq("user_id", userId);
-  if (detailDeleteError) throw new Error(detailDeleteError.message);
-
   if (accountRows.length > 0) {
-    const { error: detailInsertError } = await supabaseAdmin
+    const { error: detailUpsertError } = await supabaseAdmin
       .from("facebook_leads_ad_account_metrics")
-      .insert(accountRows);
-    if (detailInsertError) throw new Error(detailInsertError.message);
+      .upsert(accountRows, { onConflict: "user_id,facebook_ad_account_id,source_date" });
+    if (detailUpsertError) throw new Error(detailUpsertError.message);
   }
+  await applyDailyRetention("facebook_leads_ad_account_metrics", userId, nowIso);
 
   const { error: summaryUpsertError } = await supabaseAdmin.from("facebook_leads_metrics").upsert(
     {
@@ -959,6 +1059,7 @@ export async function syncUserLeadsMetrics(
     { onConflict: "user_id,snapshot_time" }
   );
   if (seriesError) throw new Error(seriesError.message);
+  await applyTimeseriesRetention("facebook_leads_timeseries", userId, nowIso);
 
   return {
     userId,
@@ -1089,18 +1190,13 @@ export async function syncUserBrandingMetrics(
   const totalSpendUsd = accountRows.reduce((sum, row) => sum + row.spend_usd, 0);
   const costPerResultUsd = totalResults > 0 ? Number((totalSpendUsd / totalResults).toFixed(2)) : null;
 
-  const { error: detailDeleteError } = await supabaseAdmin
-    .from("facebook_branding_ad_account_metrics")
-    .delete()
-    .eq("user_id", userId);
-  if (detailDeleteError) throw new Error(detailDeleteError.message);
-
   if (accountRows.length > 0) {
-    const { error: detailInsertError } = await supabaseAdmin
+    const { error: detailUpsertError } = await supabaseAdmin
       .from("facebook_branding_ad_account_metrics")
-      .insert(accountRows);
-    if (detailInsertError) throw new Error(detailInsertError.message);
+      .upsert(accountRows, { onConflict: "user_id,facebook_ad_account_id,source_date" });
+    if (detailUpsertError) throw new Error(detailUpsertError.message);
   }
+  await applyDailyRetention("facebook_branding_ad_account_metrics", userId, nowIso);
 
   const { error: summaryUpsertError } = await supabaseAdmin.from("facebook_branding_metrics").upsert(
     {
@@ -1130,6 +1226,199 @@ export async function syncUserBrandingMetrics(
     { onConflict: "user_id,snapshot_time" }
   );
   if (seriesError) throw new Error(seriesError.message);
+  await applyTimeseriesRetention("facebook_branding_timeseries", userId, nowIso);
+
+  return {
+    userId,
+    activeAccountsCount,
+    activeAdsCount,
+    totalSpendUsd: Number(totalSpendUsd.toFixed(2)),
+    totalResults,
+    costPerResultUsd,
+  };
+}
+
+export async function syncUserSalesMetrics(
+  userId: string,
+  token: string,
+  usdRates?: Record<string, number>
+): Promise<BrandingSyncSummary> {
+  const rates = usdRates || (await fetchUsdRates());
+  const rows = await getUserAdAccounts(userId);
+  const classifiedSalesAdsets = await getClassifiedAdsetsForUser(userId, "SALES");
+
+  const salesAdsetsByAccount = new Map<string, Map<string, string | null>>();
+  classifiedSalesAdsets.forEach((row) => {
+    const accountMap =
+      salesAdsetsByAccount.get(row.facebook_ad_account_id) || new Map<string, string | null>();
+    accountMap.set(row.facebook_adset_id, row.campaign_id || null);
+    salesAdsetsByAccount.set(row.facebook_ad_account_id, accountMap);
+  });
+
+  let activeAccountsCount = 0;
+  let activeAdsCount = 0;
+  let totalResults = 0;
+  const accountRows: SalesAdAccountMetricRow[] = [];
+
+  const nowIso = new Date().toISOString();
+  const sourceDate = nowIso.slice(0, 10);
+
+  for (const ad of rows) {
+    const accountEdgeId = ad.facebook_ad_account_id.startsWith("act_")
+      ? ad.facebook_ad_account_id
+      : `act_${ad.account_id || ad.facebook_ad_account_id}`;
+
+    const salesAdsetMap =
+      salesAdsetsByAccount.get(ad.facebook_ad_account_id) || new Map<string, string | null>();
+    if (salesAdsetMap.size === 0) continue;
+
+    const accountMeta = await fetchJson<{ account_status?: number }>(
+      `${GRAPH_BASE_URL}/${accountEdgeId}?fields=account_status&access_token=${encodeURIComponent(token)}`
+    ).catch((): { account_status?: number } => ({}));
+    const accountStatus =
+      typeof accountMeta.account_status === "number" ? accountMeta.account_status : null;
+
+    const activeAds = await graphFetchPaginated<GraphAd>(
+      `${GRAPH_BASE_URL}/${accountEdgeId}/ads?fields=id,effective_status,campaign{id,effective_status},adset{id}&limit=500&access_token=${encodeURIComponent(token)}`,
+      20
+    ).catch(() => []);
+
+    const activeAdsByAdset = new Map<string, number>();
+    activeAds.forEach((graphAd) => {
+      const adsetId = graphAd.adset?.id;
+      if (!adsetId) return;
+      const isRunning =
+        isActiveStatus(graphAd.effective_status) && isActiveStatus(graphAd.campaign?.effective_status);
+      if (!isRunning) return;
+      activeAdsByAdset.set(adsetId, (activeAdsByAdset.get(adsetId) || 0) + 1);
+    });
+
+    const accountAdsets = await graphFetchPaginated<GraphAdset>(
+      `${GRAPH_BASE_URL}/${accountEdgeId}/adsets?fields=id,optimization_goal,destination_type,campaign{id,objective}&limit=500&access_token=${encodeURIComponent(token)}`,
+      20
+    ).catch(() => []);
+    const adsetMetaMap = new Map(accountAdsets.map((item) => [item.id, item]));
+
+    const adsetInsights = await graphFetchPaginated<GraphAdsetInsight>(
+      `${GRAPH_BASE_URL}/${accountEdgeId}/insights?fields=adset_id,spend,actions&level=adset&date_preset=today&limit=500&access_token=${encodeURIComponent(token)}`,
+      20
+    ).catch(() => []);
+
+    let accountSpendOriginal = 0;
+    let accountResults = 0;
+    let accountActiveAds = 0;
+    const accountActiveCampaignIds = new Set<string>();
+
+    for (const insightRow of adsetInsights) {
+      const adsetId = insightRow.adset_id;
+      if (!adsetId || !salesAdsetMap.has(adsetId)) continue;
+
+      const adsetMeta = adsetMetaMap.get(adsetId);
+      const destinationType = (adsetMeta?.destination_type || "").toUpperCase();
+      const optimizationGoal = (adsetMeta?.optimization_goal || "").toUpperCase();
+      const campaignObjective = (adsetMeta?.campaign?.objective || "").toUpperCase();
+      const isMessagingDestination =
+        destinationType.includes("WHATSAPP") ||
+        destinationType.includes("MESSENGER") ||
+        destinationType.includes("INSTAGRAM_DIRECT") ||
+        destinationType.includes("CLICK_TO_MESSAGE");
+      const isSalesObjective =
+        campaignObjective.includes("SALES") || campaignObjective.includes("OUTCOME_SALES");
+      const isSalesOptimization =
+        optimizationGoal === "OFFSITE_CONVERSIONS" ||
+        optimizationGoal === "PURCHASE" ||
+        optimizationGoal === "VALUE";
+
+      // Sales tab = web/catalog sales only (exclude messaging destinations).
+      if (isMessagingDestination || (!isSalesObjective && !isSalesOptimization)) continue;
+
+      accountSpendOriginal += Number(insightRow.spend || 0);
+      accountResults += parseSalesResultCount(insightRow.actions);
+
+      const activeAdsForAdset = activeAdsByAdset.get(adsetId) || 0;
+      accountActiveAds += activeAdsForAdset;
+
+      const campaignId = salesAdsetMap.get(adsetId);
+      if (activeAdsForAdset > 0 && campaignId) {
+        accountActiveCampaignIds.add(campaignId);
+      }
+    }
+
+    const accountSpendUsd = convertToUsd(accountSpendOriginal, ad.currency, rates);
+    const accountCostPerResult =
+      accountResults > 0 ? Number((accountSpendUsd / accountResults).toFixed(2)) : null;
+    const isActiveAccount = accountActiveAds > 0;
+
+    if (accountSpendOriginal <= 0 && accountResults <= 0 && accountActiveAds <= 0) {
+      continue;
+    }
+
+    if (isActiveAccount) {
+      activeAccountsCount += 1;
+      activeAdsCount += accountActiveAds;
+    }
+
+    totalResults += accountResults;
+
+    accountRows.push({
+      user_id: userId,
+      facebook_ad_account_id: ad.facebook_ad_account_id,
+      account_id: ad.account_id || null,
+      account_name: ad.name || null,
+      active_campaigns_count: accountActiveCampaignIds.size,
+      active_ads_count: accountActiveAds,
+      is_active_account: isActiveAccount,
+      account_status: accountStatus,
+      spend_original: Number(accountSpendOriginal.toFixed(2)),
+      currency: ad.currency || null,
+      spend_usd: Number(accountSpendUsd.toFixed(2)),
+      results_count: accountResults,
+      cost_per_result_usd: accountCostPerResult,
+      source_date: sourceDate,
+      last_synced_at: nowIso,
+    });
+  }
+
+  const totalSpendUsd = accountRows.reduce((sum, row) => sum + row.spend_usd, 0);
+  const costPerResultUsd = totalResults > 0 ? Number((totalSpendUsd / totalResults).toFixed(2)) : null;
+
+  if (accountRows.length > 0) {
+    const { error: detailUpsertError } = await supabaseAdmin
+      .from("facebook_sales_ad_account_metrics")
+      .upsert(accountRows, { onConflict: "user_id,facebook_ad_account_id,source_date" });
+    if (detailUpsertError) throw new Error(detailUpsertError.message);
+  }
+  await applyDailyRetention("facebook_sales_ad_account_metrics", userId, nowIso);
+
+  const { error: summaryUpsertError } = await supabaseAdmin.from("facebook_sales_metrics").upsert(
+    {
+      user_id: userId,
+      active_accounts_count: activeAccountsCount,
+      active_ads_count: activeAdsCount,
+      total_spend_usd: Number(totalSpendUsd.toFixed(2)),
+      total_results: totalResults,
+      cost_per_result_usd: costPerResultUsd,
+      source_date: sourceDate,
+      last_synced_at: nowIso,
+      updated_at: nowIso,
+    },
+    { onConflict: "user_id" }
+  );
+  if (summaryUpsertError) throw new Error(summaryUpsertError.message);
+
+  const { error: seriesError } = await supabaseAdmin.from("facebook_sales_timeseries").upsert(
+    {
+      user_id: userId,
+      snapshot_time: getRoundedSnapshotTime(nowIso),
+      source_date: sourceDate,
+      spend_usd: Number(totalSpendUsd.toFixed(2)),
+      results_count: totalResults,
+      cost_per_result_usd: costPerResultUsd,
+    },
+    { onConflict: "user_id,snapshot_time" }
+  );
+  if (seriesError) throw new Error(seriesError.message);
+  await applyTimeseriesRetention("facebook_sales_timeseries", userId, nowIso);
 
   return {
     userId,
@@ -1323,8 +1612,9 @@ export async function syncUserAllMetrics(
   const messaging = await syncUserMessagingMetrics(userId, token, rates);
   const leads = await syncUserLeadsMetrics(userId, token, rates);
   const branding = await syncUserBrandingMetrics(userId, token, rates);
+  const sales = await syncUserSalesMetrics(userId, token, rates);
   const monitoring = await syncUserPerformanceMonitoring(userId, token, rates);
-  return { dashboard, messaging, leads, branding, monitoring };
+  return { dashboard, messaging, leads, branding, sales, monitoring };
 }
 
 export async function syncAllDashboardMetrics() {
