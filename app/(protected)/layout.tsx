@@ -55,7 +55,10 @@ const NAV_SECTIONS: NavSection[] = [
   },
   {
     title: "Assets",
-    items: [{ href: "/assets/facebook-conexion", label: "Facebook conexión" }],
+    items: [
+      { href: "/assets/facebook-conexion", label: "Facebook conexión" },
+      { href: "/assets/integraciones", label: "Integraciones" },
+    ],
   },
   {
     title: "Automatizacion",
