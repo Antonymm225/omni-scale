@@ -20,7 +20,18 @@ type GraphAd = {
 };
 
 type GraphInsight = {
+  campaign_id?: string;
+  campaign_name?: string;
+  adset_id?: string;
+  adset_name?: string;
+  ad_id?: string;
+  ad_name?: string;
   spend?: string;
+  impressions?: string;
+  clicks?: string;
+  ctr?: string;
+  cpm?: string;
+  frequency?: string;
   actions?: Array<{ action_type?: string; value?: string }>;
 };
 
@@ -32,11 +43,24 @@ type GraphAdset = {
   id: string;
   name?: string;
   status?: string;
+  effective_status?: string;
   optimization_goal?: string;
   billing_event?: string;
   destination_type?: string;
   promoted_object?: Record<string, unknown>;
   campaign?: { id?: string; name?: string; objective?: string };
+};
+
+type GraphCampaign = {
+  id: string;
+  status?: string;
+  effective_status?: string;
+};
+
+type GraphAdStatus = {
+  id: string;
+  status?: string;
+  effective_status?: string;
 };
 
 type AdAccountRow = {
@@ -163,6 +187,7 @@ export type UserSyncSummary = {
   messaging: MessagingSyncSummary;
   leads: DashboardSyncSummary;
   branding: BrandingSyncSummary;
+  monitoring: { userId: string; entitiesTracked: number };
 };
 
 const GRAPH_BASE_URL = "https://graph.facebook.com/v23.0";
@@ -298,6 +323,66 @@ function parseBrandingResultCount(actions?: Array<{ action_type?: string; value?
 
   if (brandingLike.length === 0) return 0;
   return Math.max(...brandingLike.map((item) => item.value));
+}
+
+function parseUnifiedResultCount(actions?: Array<{ action_type?: string; value?: string }>) {
+  if (!actions || actions.length === 0) return 0;
+
+  const normalized = actions.map((action) => ({
+    type: (action.action_type || "").toLowerCase(),
+    value: Number(action.value || 0),
+  }));
+
+  const precedence = [
+    "purchase",
+    "lead",
+    "onsite_conversion.messaging_conversation_started",
+    "messages_started_7d",
+    "post_engagement",
+    "link_click",
+    "video_view",
+    "thruplay",
+  ];
+
+  for (const actionType of precedence) {
+    const match = normalized.find((item) => item.type === actionType);
+    if (match) return match.value;
+  }
+
+  return Math.max(...normalized.map((item) => item.value), 0);
+}
+
+type MonitoringTrend = "improving" | "stable" | "worsening";
+type MonitoringHealth = "good" | "watch" | "bad";
+
+function getTrend(
+  currentCpr: number | null,
+  currentResults: number,
+  previousCpr: number | null,
+  previousResults: number | null
+): MonitoringTrend {
+  if (previousCpr == null || currentCpr == null) return "stable";
+  const prevResults = previousResults ?? 0;
+
+  if (currentCpr <= previousCpr * 0.9 || currentResults >= prevResults * 1.15) {
+    return "improving";
+  }
+  if (currentCpr >= previousCpr * 1.1 && currentResults <= prevResults * 0.9) {
+    return "worsening";
+  }
+  return "stable";
+}
+
+function getHealth(
+  spendUsd: number,
+  results: number,
+  cpr: number | null,
+  trend: MonitoringTrend
+): MonitoringHealth {
+  if (spendUsd >= 10 && results === 0) return "bad";
+  if (trend === "worsening" && cpr != null) return "bad";
+  if (results >= 5 && (trend === "improving" || cpr == null || cpr <= 3)) return "good";
+  return "watch";
 }
 
 async function getUserAdAccounts(userId: string) {
@@ -1056,6 +1141,178 @@ export async function syncUserBrandingMetrics(
   };
 }
 
+export async function syncUserPerformanceMonitoring(
+  userId: string,
+  token: string,
+  usdRates?: Record<string, number>
+): Promise<{ userId: string; entitiesTracked: number }> {
+  const rates = usdRates || (await fetchUsdRates());
+  const rows = await getUserAdAccounts(userId);
+  const nowIso = new Date().toISOString();
+  const sourceDate = nowIso.slice(0, 10);
+  const snapshotTime = getRoundedSnapshotTime(nowIso);
+
+  const { data: previousStateRows, error: previousStateError } = await supabaseAdmin
+    .from("facebook_performance_state")
+    .select("entity_type,entity_id,cost_per_result_usd,results_count")
+    .eq("user_id", userId);
+  if (previousStateError) throw new Error(previousStateError.message);
+
+  const previousStateMap = new Map<
+    string,
+    { cost_per_result_usd: number | null; results_count: number | null }
+  >();
+  (previousStateRows || []).forEach((row) => {
+    const key = `${row.entity_type as string}:${row.entity_id as string}`;
+    previousStateMap.set(key, {
+      cost_per_result_usd: (row.cost_per_result_usd as number | null) ?? null,
+      results_count: (row.results_count as number | null) ?? null,
+    });
+  });
+
+  const snapshotRows: Array<Record<string, unknown>> = [];
+  const stateRows: Array<Record<string, unknown>> = [];
+
+  for (const ad of rows) {
+    const accountEdgeId = ad.facebook_ad_account_id.startsWith("act_")
+      ? ad.facebook_ad_account_id
+      : `act_${ad.account_id || ad.facebook_ad_account_id}`;
+
+    const campaignStatuses = await graphFetchPaginated<GraphCampaign>(
+      `${GRAPH_BASE_URL}/${accountEdgeId}/campaigns?fields=id,status,effective_status&limit=500&access_token=${encodeURIComponent(token)}`,
+      20
+    ).catch(() => []);
+    const adsetStatuses = await graphFetchPaginated<GraphAdset>(
+      `${GRAPH_BASE_URL}/${accountEdgeId}/adsets?fields=id,status,effective_status&limit=500&access_token=${encodeURIComponent(token)}`,
+      20
+    ).catch(() => []);
+    const adStatuses = await graphFetchPaginated<GraphAdStatus>(
+      `${GRAPH_BASE_URL}/${accountEdgeId}/ads?fields=id,status,effective_status&limit=500&access_token=${encodeURIComponent(token)}`,
+      20
+    ).catch(() => []);
+
+    const campaignStatusMap = new Map(campaignStatuses.map((item) => [item.id, item]));
+    const adsetStatusMap = new Map(adsetStatuses.map((item) => [item.id, item]));
+    const adStatusMap = new Map(adStatuses.map((item) => [item.id, item]));
+
+    const levels: Array<"campaign" | "adset" | "ad"> = ["campaign", "adset", "ad"];
+
+    for (const level of levels) {
+      const insights = await graphFetchPaginated<GraphInsight>(
+        `${GRAPH_BASE_URL}/${accountEdgeId}/insights?fields=campaign_id,campaign_name,adset_id,adset_name,ad_id,ad_name,spend,actions,impressions,clicks,ctr,cpm,frequency&level=${level}&date_preset=today&limit=500&access_token=${encodeURIComponent(token)}`,
+        20
+      ).catch(() => []);
+
+      for (const insightRow of insights) {
+        const entityId =
+          level === "campaign"
+            ? insightRow.campaign_id
+            : level === "adset"
+              ? insightRow.adset_id
+              : insightRow.ad_id;
+        const entityName =
+          level === "campaign"
+            ? insightRow.campaign_name
+            : level === "adset"
+              ? insightRow.adset_name
+              : insightRow.ad_name;
+
+        if (!entityId) continue;
+
+        const spendOriginal = Number(insightRow.spend || 0);
+        const spendUsd = convertToUsd(spendOriginal, ad.currency, rates);
+        const resultsCount = parseUnifiedResultCount(insightRow.actions);
+        const costPerResultUsd =
+          resultsCount > 0 ? Number((spendUsd / resultsCount).toFixed(2)) : null;
+
+        const prevKey = `${level}:${entityId}`;
+        const prev = previousStateMap.get(prevKey);
+        const trend = getTrend(
+          costPerResultUsd,
+          resultsCount,
+          prev?.cost_per_result_usd ?? null,
+          prev?.results_count ?? null
+        );
+        const health = getHealth(spendUsd, resultsCount, costPerResultUsd, trend);
+
+        const statusSource =
+          level === "campaign"
+            ? campaignStatusMap.get(entityId)
+            : level === "adset"
+              ? adsetStatusMap.get(entityId)
+              : adStatusMap.get(entityId);
+
+        const configuredStatus = statusSource?.status || null;
+        const effectiveStatus = statusSource?.effective_status || null;
+
+        const rowBase = {
+          user_id: userId,
+          facebook_ad_account_id: ad.facebook_ad_account_id,
+          account_id: ad.account_id || null,
+          account_name: ad.name || null,
+          entity_type: level,
+          entity_id: entityId,
+          entity_name: entityName || null,
+          campaign_id: insightRow.campaign_id || null,
+          campaign_name: insightRow.campaign_name || null,
+          adset_id: insightRow.adset_id || null,
+          adset_name: insightRow.adset_name || null,
+          ad_id: insightRow.ad_id || null,
+          ad_name: insightRow.ad_name || null,
+          configured_status: configuredStatus,
+          effective_status: effectiveStatus,
+          spend_original: Number(spendOriginal.toFixed(2)),
+          currency: ad.currency || null,
+          spend_usd: Number(spendUsd.toFixed(2)),
+          results_count: resultsCount,
+          cost_per_result_usd: costPerResultUsd,
+          impressions: Number(insightRow.impressions || 0),
+          clicks: Number(insightRow.clicks || 0),
+          ctr: insightRow.ctr != null ? Number(insightRow.ctr) : null,
+          cpm: insightRow.cpm != null ? Number(insightRow.cpm) : null,
+          frequency: insightRow.frequency != null ? Number(insightRow.frequency) : null,
+          trend,
+          health,
+          source_date: sourceDate,
+          last_synced_at: nowIso,
+        };
+
+        snapshotRows.push({
+          ...rowBase,
+          snapshot_time: snapshotTime,
+        });
+
+        stateRows.push({
+          ...rowBase,
+          updated_at: nowIso,
+        });
+      }
+    }
+  }
+
+  if (snapshotRows.length > 0) {
+    const { error: snapshotError } = await supabaseAdmin
+      .from("facebook_performance_snapshots")
+      .upsert(snapshotRows, { onConflict: "user_id,entity_type,entity_id,snapshot_time" });
+    if (snapshotError) throw new Error(snapshotError.message);
+  }
+
+  const { error: stateDeleteError } = await supabaseAdmin
+    .from("facebook_performance_state")
+    .delete()
+    .eq("user_id", userId);
+  if (stateDeleteError) throw new Error(stateDeleteError.message);
+
+  if (stateRows.length > 0) {
+    const { error: stateInsertError } = await supabaseAdmin
+      .from("facebook_performance_state")
+      .insert(stateRows);
+    if (stateInsertError) throw new Error(stateInsertError.message);
+  }
+
+  return { userId, entitiesTracked: stateRows.length };
+}
+
 export async function syncUserAllMetrics(
   userId: string,
   token: string,
@@ -1066,7 +1323,8 @@ export async function syncUserAllMetrics(
   const messaging = await syncUserMessagingMetrics(userId, token, rates);
   const leads = await syncUserLeadsMetrics(userId, token, rates);
   const branding = await syncUserBrandingMetrics(userId, token, rates);
-  return { dashboard, messaging, leads, branding };
+  const monitoring = await syncUserPerformanceMonitoring(userId, token, rates);
+  return { dashboard, messaging, leads, branding, monitoring };
 }
 
 export async function syncAllDashboardMetrics() {
