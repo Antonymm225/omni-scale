@@ -99,7 +99,6 @@ export function classifyAdset(
 ): ClassificationResult {
   const optimizationGoal = (adsetData.optimization_goal || "").toUpperCase();
   const destinationType = adsetData.destination_type || "";
-  const campaignObjective = (adsetData.campaign_objective || "").toUpperCase();
 
   // STEP 2: overrides by destination or promoted object
   if (includesAny(destinationType, MESSAGING_DESTINATIONS)) {
@@ -133,11 +132,6 @@ export function classifyAdset(
   }
   if (AWARENESS_OPTIMIZATION.has(optimizationGoal)) {
     return { performanceType: "AWARENESS", classificationSource: "auto", confidenceScore: 84 };
-  }
-
-  // campaign objective as weak signal
-  if (campaignObjective.includes("MESSAGES") || campaignObjective.includes("OUTCOME_ENGAGEMENT")) {
-    return { performanceType: "MESSAGING", classificationSource: "auto", confidenceScore: 70 };
   }
 
   // STEP 4 fallback

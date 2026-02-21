@@ -200,18 +200,35 @@ function isActiveStatus(status: string | undefined) {
 function parseLeadCount(actions?: Array<{ action_type?: string; value?: string }>) {
   if (!actions || actions.length === 0) return 0;
 
-  const leadActionTypes = new Set([
-    "lead",
-    "onsite_conversion.lead_grouped",
-    "onsite_conversion.lead",
-    "offsite_conversion.fb_pixel_lead",
-    "offsite_conversion.lead",
-  ]);
+  // Avoid double counting: Meta can return multiple lead action types for the same result.
+  // We pick a single canonical metric with precedence, then fallback to max lead-like value.
+  const normalized = actions.map((action) => ({
+    type: (action.action_type || "").toLowerCase(),
+    value: Number(action.value || 0),
+  }));
 
-  return actions.reduce((sum, action) => {
-    if (!action.action_type || !leadActionTypes.has(action.action_type)) return sum;
-    return sum + Number(action.value || 0);
-  }, 0);
+  const precedence = [
+    "lead",
+    "onsite_conversion.lead",
+    "onsite_conversion.lead_grouped",
+    "offsite_conversion.lead",
+    "offsite_conversion.fb_pixel_lead",
+  ];
+
+  for (const actionType of precedence) {
+    const match = normalized.find((item) => item.type === actionType);
+    if (match) return match.value;
+  }
+
+  const leadLike = normalized.filter(
+    (item) =>
+      item.type.includes("lead") ||
+      item.type.includes("complete_registration") ||
+      item.type.includes("omni_lead")
+  );
+
+  if (leadLike.length === 0) return 0;
+  return Math.max(...leadLike.map((item) => item.value));
 }
 
 async function getUserAdAccounts(userId: string) {
