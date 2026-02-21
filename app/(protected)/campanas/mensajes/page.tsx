@@ -523,13 +523,13 @@ function MessagesLineChart({
       {cprPath ? <path d={cprPath} fill="none" stroke="#7c3aed" strokeWidth="2" strokeLinecap="round" /> : null}
 
       {spendPath ? (
-        <path d={spendPath} fill="none" stroke="transparent" strokeWidth="28" style={{ pointerEvents: "stroke" }} onMouseMove={(e) => setLineTooltipFromMouse("spend", e)} onMouseLeave={() => onHover(null)} />
+        <path d={spendPath} fill="none" stroke="transparent" strokeWidth="40" style={{ pointerEvents: "stroke" }} onMouseMove={(e) => setLineTooltipFromMouse("spend", e)} onMouseLeave={() => onHover(null)} />
       ) : null}
       {resultsPath ? (
-        <path d={resultsPath} fill="none" stroke="transparent" strokeWidth="28" style={{ pointerEvents: "stroke" }} onMouseMove={(e) => setLineTooltipFromMouse("results", e)} onMouseLeave={() => onHover(null)} />
+        <path d={resultsPath} fill="none" stroke="transparent" strokeWidth="40" style={{ pointerEvents: "stroke" }} onMouseMove={(e) => setLineTooltipFromMouse("results", e)} onMouseLeave={() => onHover(null)} />
       ) : null}
       {cprPath ? (
-        <path d={cprPath} fill="none" stroke="transparent" strokeWidth="28" style={{ pointerEvents: "stroke" }} onMouseMove={(e) => setLineTooltipFromMouse("cpr", e)} onMouseLeave={() => onHover(null)} />
+        <path d={cprPath} fill="none" stroke="transparent" strokeWidth="40" style={{ pointerEvents: "stroke" }} onMouseMove={(e) => setLineTooltipFromMouse("cpr", e)} onMouseLeave={() => onHover(null)} />
       ) : null}
 
       {points.map((p, idx) => (
@@ -537,7 +537,7 @@ function MessagesLineChart({
           <circle
             cx={p.x}
             cy={p.spendY}
-            r="16"
+            r="22"
             fill="transparent"
             onMouseEnter={() =>
               onHover({
@@ -555,7 +555,7 @@ function MessagesLineChart({
           <circle
             cx={p.x}
             cy={p.resultsY}
-            r="16"
+            r="22"
             fill="transparent"
             onMouseEnter={() =>
               onHover({
@@ -574,7 +574,7 @@ function MessagesLineChart({
             <circle
               cx={p.x}
               cy={p.cprY}
-              r="16"
+              r="22"
               fill="transparent"
                 onMouseEnter={() =>
                 onHover({

@@ -563,7 +563,7 @@ function DashboardLineChart({
           d={spendPath}
           fill="none"
           stroke="transparent"
-          strokeWidth="28"
+          strokeWidth="40"
           style={{ pointerEvents: "stroke" }}
           onMouseMove={(event) => setLineTooltipFromMouse("spend", event)}
           onMouseLeave={() => onHover(null)}
@@ -574,7 +574,7 @@ function DashboardLineChart({
           d={leadsPath}
           fill="none"
           stroke="transparent"
-          strokeWidth="28"
+          strokeWidth="40"
           style={{ pointerEvents: "stroke" }}
           onMouseMove={(event) => setLineTooltipFromMouse("results", event)}
           onMouseLeave={() => onHover(null)}
@@ -585,7 +585,7 @@ function DashboardLineChart({
           d={cprPath}
           fill="none"
           stroke="transparent"
-          strokeWidth="28"
+          strokeWidth="40"
           style={{ pointerEvents: "stroke" }}
           onMouseMove={(event) => setLineTooltipFromMouse("cpr", event)}
           onMouseLeave={() => onHover(null)}
@@ -597,7 +597,7 @@ function DashboardLineChart({
           <circle
             cx={p.x}
             cy={p.spendY}
-            r="16"
+            r="22"
             fill="transparent"
                 onMouseEnter={() =>
                   onHover({
@@ -615,7 +615,7 @@ function DashboardLineChart({
           <circle
             cx={p.x}
             cy={p.leadsY}
-            r="16"
+            r="22"
             fill="transparent"
                 onMouseEnter={() =>
                   onHover({
@@ -634,7 +634,7 @@ function DashboardLineChart({
             <circle
               cx={p.x}
               cy={p.cprY}
-              r="16"
+              r="22"
               fill="transparent"
                 onMouseEnter={() =>
                   onHover({
