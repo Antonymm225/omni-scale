@@ -1107,6 +1107,34 @@ async function applyDailyRetention(table: string, userId: string, nowIso: string
   if (error) throw new Error(error.message);
 }
 
+async function upsertAdAccountMetricsRows(
+  table: string,
+  rows: Array<Record<string, unknown>>
+) {
+  if (rows.length === 0) return;
+
+  // Preferred schema: unique(user_id, facebook_ad_account_id, source_date)
+  const firstTry = await supabaseAdmin
+    .from(table)
+    .upsert(rows, { onConflict: "user_id,facebook_ad_account_id,source_date" });
+  if (!firstTry.error) return;
+
+  const message = firstTry.error.message || "";
+  const legacyUniqueConflict =
+    message.includes("duplicate key value violates unique constraint") &&
+    message.includes("user_id_facebook_ad_account");
+
+  if (!legacyUniqueConflict) {
+    throw new Error(firstTry.error.message);
+  }
+
+  // Legacy schema fallback: unique(user_id, facebook_ad_account_id)
+  const secondTry = await supabaseAdmin
+    .from(table)
+    .upsert(rows, { onConflict: "user_id,facebook_ad_account_id" });
+  if (secondTry.error) throw new Error(secondTry.error.message);
+}
+
 async function applyPerformanceSnapshotRetention(userId: string, nowIso: string) {
   const now = new Date(nowIso);
   const cutoff = new Date(now);
@@ -1246,10 +1274,7 @@ export async function syncUserDashboardMetrics(
   const costPerResultUsd = totalLeads > 0 ? Number((totalSpendUsd / totalLeads).toFixed(2)) : null;
 
   if (detailRows.length > 0) {
-    const { error: detailUpsertError } = await supabaseAdmin
-      .from("facebook_dashboard_ad_account_metrics")
-      .upsert(detailRows, { onConflict: "user_id,facebook_ad_account_id,source_date" });
-    if (detailUpsertError) throw new Error(detailUpsertError.message);
+    await upsertAdAccountMetricsRows("facebook_dashboard_ad_account_metrics", detailRows as Array<Record<string, unknown>>);
   }
   await applyDailyRetention("facebook_dashboard_ad_account_metrics", userId, nowIso);
 
@@ -1457,10 +1482,7 @@ export async function syncUserMessagingMetrics(
   const costPerResultUsd = totalResults > 0 ? Number((totalSpendUsd / totalResults).toFixed(2)) : null;
 
   if (accountRows.length > 0) {
-    const { error: detailUpsertError } = await supabaseAdmin
-      .from("facebook_messages_ad_account_metrics")
-      .upsert(accountRows, { onConflict: "user_id,facebook_ad_account_id,source_date" });
-    if (detailUpsertError) throw new Error(detailUpsertError.message);
+    await upsertAdAccountMetricsRows("facebook_messages_ad_account_metrics", accountRows as Array<Record<string, unknown>>);
   }
   await applyDailyRetention("facebook_messages_ad_account_metrics", userId, nowIso);
 
@@ -1624,10 +1646,7 @@ export async function syncUserLeadsMetrics(
   const costPerResultUsd = totalLeads > 0 ? Number((totalSpendUsd / totalLeads).toFixed(2)) : null;
 
   if (accountRows.length > 0) {
-    const { error: detailUpsertError } = await supabaseAdmin
-      .from("facebook_leads_ad_account_metrics")
-      .upsert(accountRows, { onConflict: "user_id,facebook_ad_account_id,source_date" });
-    if (detailUpsertError) throw new Error(detailUpsertError.message);
+    await upsertAdAccountMetricsRows("facebook_leads_ad_account_metrics", accountRows as Array<Record<string, unknown>>);
   }
   await applyDailyRetention("facebook_leads_ad_account_metrics", userId, nowIso);
 
@@ -1792,10 +1811,7 @@ export async function syncUserBrandingMetrics(
   const costPerResultUsd = totalResults > 0 ? Number((totalSpendUsd / totalResults).toFixed(2)) : null;
 
   if (accountRows.length > 0) {
-    const { error: detailUpsertError } = await supabaseAdmin
-      .from("facebook_branding_ad_account_metrics")
-      .upsert(accountRows, { onConflict: "user_id,facebook_ad_account_id,source_date" });
-    if (detailUpsertError) throw new Error(detailUpsertError.message);
+    await upsertAdAccountMetricsRows("facebook_branding_ad_account_metrics", accountRows as Array<Record<string, unknown>>);
   }
   await applyDailyRetention("facebook_branding_ad_account_metrics", userId, nowIso);
 
@@ -1985,10 +2001,7 @@ export async function syncUserSalesMetrics(
   const costPerResultUsd = totalResults > 0 ? Number((totalSpendUsd / totalResults).toFixed(2)) : null;
 
   if (accountRows.length > 0) {
-    const { error: detailUpsertError } = await supabaseAdmin
-      .from("facebook_sales_ad_account_metrics")
-      .upsert(accountRows, { onConflict: "user_id,facebook_ad_account_id,source_date" });
-    if (detailUpsertError) throw new Error(detailUpsertError.message);
+    await upsertAdAccountMetricsRows("facebook_sales_ad_account_metrics", accountRows as Array<Record<string, unknown>>);
   }
   await applyDailyRetention("facebook_sales_ad_account_metrics", userId, nowIso);
 
