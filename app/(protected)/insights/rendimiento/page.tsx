@@ -126,7 +126,74 @@ export default function RendimientoPage() {
   };
 
   const accountRows = useMemo(
-    () => rows.filter((row) => row.entity_type === "account"),
+    () => {
+      const directAccounts = rows.filter((row) => row.entity_type === "account" && Number(row.spend_usd || 0) > 0);
+      if (directAccounts.length > 0) return directAccounts;
+
+      // Fallback: derive account view from campaign rows with spend.
+      const campaigns = rows.filter((row) => row.entity_type === "campaign" && Number(row.spend_usd || 0) > 0);
+      const byAccount = new Map<string, PerfStateRow[]>();
+      campaigns.forEach((row) => {
+        const key = row.facebook_ad_account_id;
+        const list = byAccount.get(key) || [];
+        list.push(row);
+        byAccount.set(key, list);
+      });
+
+      const derived: PerfStateRow[] = [];
+      byAccount.forEach((items, accountKey) => {
+        const first = items[0];
+        const spend = items.reduce((sum, item) => sum + Number(item.spend_usd || 0), 0);
+        const results = items.reduce((sum, item) => sum + Number(item.results_count || 0), 0);
+        const cpmAvg = avg(items.map((item) => item.cpm));
+        const ctrAvg = avg(items.map((item) => item.ctr));
+        const cpcAvg = avg(items.map((item) => item.cpc_usd));
+        const cpr = results > 0 ? Number((spend / results).toFixed(2)) : null;
+
+        const confidence = Math.round(
+          items.reduce((sum, item) => sum + Number(item.ai_confidence_score || 55), 0) / items.length
+        );
+
+        const score = items.reduce((sum, item) => {
+          if (item.ai_recommendation === "scale") return sum + 2;
+          if (item.ai_recommendation === "improving") return sum + 1;
+          if (item.ai_recommendation === "worsening") return sum - 2;
+          return sum;
+        }, 0);
+        const rec: AiRecommendation =
+          score >= items.length ? "scale" : score > 0 ? "improving" : score <= -items.length ? "worsening" : "stable";
+
+        derived.push({
+          entity_type: "account",
+          entity_id: accountKey,
+          entity_name: first.account_name || "Cuenta sin nombre",
+          facebook_ad_account_id: accountKey,
+          account_name: first.account_name || null,
+          campaign_id: null,
+          campaign_name: null,
+          adset_id: null,
+          adset_name: null,
+          ad_id: null,
+          ad_name: null,
+          spend_usd: Number(spend.toFixed(2)),
+          results_count: results,
+          cost_per_result_usd: cpr,
+          cpm: cpmAvg,
+          ctr: ctrAvg,
+          cpc_usd: cpcAvg,
+          trend: first.trend,
+          health: first.health,
+          ai_recommendation: rec,
+          ai_reason_short: "Derivado de campañas activas con gasto",
+          ai_confidence_score: confidence,
+          ai_model: "derived",
+          effective_status: first.effective_status,
+          last_synced_at: first.last_synced_at,
+        });
+      });
+
+      return derived.sort((a, b) => Number(b.spend_usd || 0) - Number(a.spend_usd || 0));
+    },
     [rows]
   );
   const campaignRows = useMemo(
@@ -582,6 +649,12 @@ function formatUsd(amount: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
+}
+
+function avg(values: Array<number | null>) {
+  const valid = values.filter((v): v is number => v != null);
+  if (valid.length === 0) return null;
+  return Number((valid.reduce((sum, v) => sum + v, 0) / valid.length).toFixed(4));
 }
 
 function getLevelLabel(level: PerfEntityType) {
