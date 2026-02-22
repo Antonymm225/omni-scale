@@ -282,6 +282,49 @@ export default function ProtectedLayout({
   };
 
   useEffect(() => {
+    const detectBrowserTimezone = () => {
+      try {
+        const resolved = Intl.DateTimeFormat().resolvedOptions().timeZone;
+        return resolved && resolved.trim() ? resolved.trim() : "America/Lima";
+      } catch {
+        return "America/Lima";
+      }
+    };
+
+    const ensureReportingTimezone = async (user: {
+      id: string;
+      email?: string | null;
+      user_metadata?: { full_name?: string; name?: string };
+    }) => {
+      const { data: profileRow, error: profileError } = await supabase
+        .from("profiles")
+        .select("timezone_name")
+        .eq("id", user.id)
+        .maybeSingle();
+
+      if (profileError) return;
+
+      const existingTimezone = (profileRow?.timezone_name as string | null) || "";
+      if (existingTimezone.trim()) return;
+
+      const fullName =
+        (user.user_metadata?.full_name as string | undefined) ||
+        (user.user_metadata?.name as string | undefined) ||
+        user.email?.split("@")[0] ||
+        "Usuario";
+
+      const timezoneName = detectBrowserTimezone();
+      await supabase.from("profiles").upsert(
+        {
+          id: user.id,
+          email: user.email || null,
+          name: fullName,
+          timezone_name: timezoneName,
+        },
+        { onConflict: "id" }
+      );
+    };
+
     const mapUserProfile = (user: {
       email?: string | null;
       user_metadata?: { full_name?: string; name?: string; avatar_url?: string };
@@ -308,6 +351,11 @@ export default function ProtectedLayout({
 
       const user = data.session.user;
       setProfile(mapUserProfile(user));
+      await ensureReportingTimezone({
+        id: user.id,
+        email: user.email,
+        user_metadata: user.user_metadata as { full_name?: string; name?: string },
+      });
 
       setLoading(false);
     };

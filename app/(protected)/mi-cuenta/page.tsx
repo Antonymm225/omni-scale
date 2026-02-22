@@ -8,7 +8,39 @@ type ProfileState = {
   name: string;
   email: string;
   avatarUrl: string | null;
+  timezoneName: string;
 };
+
+const TIMEZONE_OPTIONS = [
+  "America/Lima",
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "America/Phoenix",
+  "America/Toronto",
+  "America/Miami",
+  "America/Bogota",
+  "America/Guayaquil",
+  "America/Panama",
+  "America/El_Salvador",
+  "America/Guatemala",
+  "America/Costa_Rica",
+  "America/Managua",
+  "America/Havana",
+  "America/Mexico_City",
+  "America/Santiago",
+  "America/Buenos_Aires",
+  "America/La_Paz",
+  "America/Asuncion",
+  "America/Caracas",
+  "America/Montevideo",
+  "America/Sao_Paulo",
+  "Europe/London",
+  "Europe/Madrid",
+  "Europe/Berlin",
+  "UTC",
+];
 
 export default function Page() {
   const router = useRouter();
@@ -19,7 +51,9 @@ export default function Page() {
     name: "Usuario",
     email: "",
     avatarUrl: null,
+    timezoneName: "America/Lima",
   });
+  const [savingTimezone, setSavingTimezone] = useState(false);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -35,10 +69,17 @@ export default function Page() {
         user.email?.split("@")[0] ||
         "Usuario";
 
+      const { data: profileRow } = await supabase
+        .from("profiles")
+        .select("timezone_name")
+        .eq("id", user.id)
+        .maybeSingle();
+
       setProfile({
         name: fullName,
         email: user.email || "",
         avatarUrl: (user.user_metadata?.avatar_url as string | undefined) || null,
+        timezoneName: (profileRow?.timezone_name as string | null) || "America/Lima",
       });
     };
 
@@ -117,6 +158,36 @@ export default function Page() {
     }
   };
 
+  const handleTimezoneSave = async () => {
+    setError(null);
+    setNotice(null);
+    setSavingTimezone(true);
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) throw new Error("No se pudo validar la sesion.");
+
+      const { error: upsertError } = await supabase.from("profiles").upsert(
+        {
+          id: user.id,
+          email: user.email || null,
+          name: profile.name || null,
+          timezone_name: profile.timezoneName,
+        },
+        { onConflict: "id" }
+      );
+      if (upsertError) throw new Error(upsertError.message);
+
+      setNotice("Zona horaria guardada. El reporting usará esta configuración.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "No se pudo guardar la zona horaria.");
+    } finally {
+      setSavingTimezone(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-[#f3f5f9] px-4 py-10 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-5xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-10">
@@ -179,6 +250,36 @@ export default function Page() {
             </svg>
             Cerrar sesión
           </button>
+        </div>
+
+        <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+          <p className="text-sm font-semibold text-[#111827]">Zona horaria para reporting</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Define cómo se calcula Hoy/Ayer y el cierre diario de métricas.
+          </p>
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <select
+              value={profile.timezoneName}
+              onChange={(event) =>
+                setProfile((prev) => ({ ...prev, timezoneName: event.target.value }))
+              }
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-[#1D293D] outline-none ring-[#1D293D] focus:ring-2 sm:max-w-sm"
+            >
+              {TIMEZONE_OPTIONS.map((timezone) => (
+                <option key={timezone} value={timezone}>
+                  {timezone}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={handleTimezoneSave}
+              disabled={savingTimezone}
+              className="inline-flex items-center justify-center rounded-lg bg-[#1D293D] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {savingTimezone ? "Guardando..." : "Guardar zona horaria"}
+            </button>
+          </div>
         </div>
       </div>
     </main>

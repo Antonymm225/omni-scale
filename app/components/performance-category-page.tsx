@@ -85,11 +85,28 @@ const RANGE_OPTIONS: Array<{ key: RangeKey; label: string }> = [
   { key: "7d", label: "7 dias" },
 ];
 
-function formatDateLocal(date: Date) {
+function formatDateParts(date: Date) {
   const y = date.getUTCFullYear();
   const m = String(date.getUTCMonth() + 1).padStart(2, "0");
   const d = String(date.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+function getDateInTimeZone(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const year = parts.find((p) => p.type === "year")?.value || "1970";
+  const month = parts.find((p) => p.type === "month")?.value || "01";
+  const day = parts.find((p) => p.type === "day")?.value || "01";
+  return `${year}-${month}-${day}`;
+}
+
+function dateOnlyToUtcDate(dateOnly: string) {
+  return new Date(`${dateOnly}T00:00:00.000Z`);
 }
 
 function addDays(date: Date, days: number) {
@@ -98,10 +115,10 @@ function addDays(date: Date, days: number) {
   return next;
 }
 
-function buildRange(range: RangeKey) {
+function buildRange(range: RangeKey, timeZone: string) {
   const now = new Date();
-  const todayStart = new Date(now);
-  todayStart.setUTCHours(0, 0, 0, 0);
+  const todayInTz = getDateInTimeZone(now, timeZone);
+  const todayStart = dateOnlyToUtcDate(todayInTz);
 
   let start = todayStart;
   let endExclusive = addDays(todayStart, 1);
@@ -120,8 +137,8 @@ function buildRange(range: RangeKey) {
   }
 
   return {
-    startDate: formatDateLocal(start),
-    endDate: formatDateLocal(addDays(endExclusive, -1)),
+    startDate: formatDateParts(start),
+    endDate: formatDateParts(addDays(endExclusive, -1)),
     xMode: range === "today" || range === "yesterday" ? ("hour" as XMode) : ("day" as XMode),
   };
 }
@@ -136,8 +153,9 @@ export default function PerformanceCategoryPage(props: Props) {
   const [accountRows, setAccountRows] = useState<AggregatedAccountRow[]>([]);
   const [series, setSeries] = useState<SeriesPoint[]>([]);
   const [tooltip, setTooltip] = useState<ChartTooltip | null>(null);
+  const [timezoneName, setTimezoneName] = useState("America/Lima");
 
-  const rangeInfo = useMemo(() => buildRange(range), [range]);
+  const rangeInfo = useMemo(() => buildRange(range, timezoneName), [range, timezoneName]);
 
   const loadMetrics = async () => {
     setLoading(true);
@@ -154,28 +172,41 @@ export default function PerformanceCategoryPage(props: Props) {
       return;
     }
 
-    const [metricsRes, accountsRes, seriesRes] = await Promise.all([
+    const { data: profileRow } = await supabase
+      .from("profiles")
+      .select("timezone_name")
+      .eq("id", user.id)
+      .maybeSingle();
+    const tz = (profileRow?.timezone_name as string | null) || "America/Lima";
+    setTimezoneName(tz);
+
+    const fetchRangeData = async (startDate: string, endDate: string) =>
+      Promise.all([
+        supabase
+          .from(props.accountTable)
+          .select(
+            `facebook_ad_account_id,account_id,account_name,active_campaigns_count,active_ads_count,is_active_account,account_status,spend_original,currency,spend_usd,source_date,cost_per_result_usd,${props.accountResultField}`
+          )
+          .eq("user_id", user.id)
+          .gte("source_date", startDate)
+          .lte("source_date", endDate)
+          .order("source_date", { ascending: false }),
+        supabase
+          .from(props.timeseriesTable)
+          .select(`snapshot_time,source_date,spend_usd,cost_per_result_usd,${props.timeseriesResultField}`)
+          .eq("user_id", user.id)
+          .gte("source_date", startDate)
+          .lte("source_date", endDate)
+          .order("snapshot_time", { ascending: true }),
+      ]);
+
+    const [metricsRes, accountsResInitial, seriesResInitial] = await Promise.all([
       supabase
         .from(props.metricsTable)
         .select(`last_synced_at,${props.summaryResultField}`)
         .eq("user_id", user.id)
         .maybeSingle(),
-      supabase
-        .from(props.accountTable)
-        .select(
-          `facebook_ad_account_id,account_id,account_name,active_campaigns_count,active_ads_count,is_active_account,account_status,spend_original,currency,spend_usd,source_date,cost_per_result_usd,${props.accountResultField}`
-        )
-        .eq("user_id", user.id)
-        .gte("source_date", rangeInfo.startDate)
-        .lte("source_date", rangeInfo.endDate)
-        .order("source_date", { ascending: false }),
-      supabase
-        .from(props.timeseriesTable)
-        .select(`snapshot_time,source_date,spend_usd,cost_per_result_usd,${props.timeseriesResultField}`)
-        .eq("user_id", user.id)
-        .gte("source_date", rangeInfo.startDate)
-        .lte("source_date", rangeInfo.endDate)
-        .order("snapshot_time", { ascending: true }),
+      ...await fetchRangeData(rangeInfo.startDate, rangeInfo.endDate),
     ]);
 
     if (metricsRes.error) {
@@ -183,15 +214,44 @@ export default function PerformanceCategoryPage(props: Props) {
       setLoading(false);
       return;
     }
-    if (accountsRes.error) {
-      setError(accountsRes.error.message);
+    if (accountsResInitial.error) {
+      setError(accountsResInitial.error.message);
       setLoading(false);
       return;
     }
-    if (seriesRes.error) {
-      setError(seriesRes.error.message);
+    if (seriesResInitial.error) {
+      setError(seriesResInitial.error.message);
       setLoading(false);
       return;
+    }
+
+    let accountsRes = accountsResInitial;
+    let seriesRes = seriesResInitial;
+
+    // Fallback for timezone/date-boundary gaps:
+    // if "today" has no rows, use latest available source_date.
+    if (
+      range === "today" &&
+      ((accountsRes.data || []).length === 0 || (seriesRes.data || []).length === 0)
+    ) {
+      const { data: latestRow, error: latestError } = await supabase
+        .from(props.accountTable)
+        .select("source_date")
+        .eq("user_id", user.id)
+        .order("source_date", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!latestError && latestRow?.source_date) {
+        const [fallbackAccounts, fallbackSeries] = await fetchRangeData(
+          latestRow.source_date as string,
+          latestRow.source_date as string
+        );
+        if (!fallbackAccounts.error && !fallbackSeries.error) {
+          accountsRes = fallbackAccounts;
+          seriesRes = fallbackSeries;
+        }
+      }
     }
 
     const rawAccounts = ((accountsRes.data as unknown as RawAccountRow[]) || []).map(
@@ -283,7 +343,7 @@ export default function PerformanceCategoryPage(props: Props) {
 
   useEffect(() => {
     void loadMetrics();
-  }, [range]);
+  }, [range, timezoneName]);
 
   const handleSyncNow = async () => {
     if (range !== "today") return;

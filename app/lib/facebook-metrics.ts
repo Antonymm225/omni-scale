@@ -1030,6 +1030,31 @@ function formatDateUtc(date: Date) {
   return date.toISOString().slice(0, 10);
 }
 
+async function getUserReportingTimezone(userId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("timezone_name")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) return "America/Lima";
+  const value = (data?.timezone_name as string | null) || "";
+  return value.trim() || "America/Lima";
+}
+
+function formatDateInTimezone(nowIso: string, timeZone: string) {
+  const date = new Date(nowIso);
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const year = parts.find((p) => p.type === "year")?.value || "1970";
+  const month = parts.find((p) => p.type === "month")?.value || "01";
+  const day = parts.find((p) => p.type === "day")?.value || "01";
+  return `${year}-${month}-${day}`;
+}
+
 async function applyTimeseriesRetention(table: string, userId: string, nowIso: string) {
   const now = new Date(nowIso);
   const cutoff = new Date(now);
@@ -1156,13 +1181,14 @@ export async function syncUserDashboardMetrics(
 ): Promise<DashboardSyncSummary> {
   const rates = usdRates || (await fetchUsdRates());
   const rows = await getUserAdAccounts(userId);
+  const reportingTimezone = await getUserReportingTimezone(userId);
 
   let activeAccountsCount = 0;
   let activeAdsCount = 0;
   let totalLeads = 0;
   const detailRows: DashboardAdAccountMetricRow[] = [];
   const nowIso = new Date().toISOString();
-  const sourceDate = nowIso.slice(0, 10);
+  const sourceDate = formatDateInTimezone(nowIso, reportingTimezone);
 
   for (const ad of rows) {
     const accountEdgeId = ad.facebook_ad_account_id.startsWith("act_")
@@ -1288,6 +1314,7 @@ export async function syncUserMessagingMetrics(
 ): Promise<MessagingSyncSummary> {
   const rates = usdRates || (await fetchUsdRates());
   const rows = await getUserAdAccounts(userId);
+  const reportingTimezone = await getUserReportingTimezone(userId);
   const connectionId = await getUserConnectionId(userId);
   const manualOverrides = await getManualOverrides(userId);
 
@@ -1297,7 +1324,7 @@ export async function syncUserMessagingMetrics(
   const accountRows: MessagingAdAccountMetricRow[] = [];
 
   const nowIso = new Date().toISOString();
-  const sourceDate = nowIso.slice(0, 10);
+  const sourceDate = formatDateInTimezone(nowIso, reportingTimezone);
 
   for (const ad of rows) {
     const accountEdgeId = ad.facebook_ad_account_id.startsWith("act_")
@@ -1498,6 +1525,7 @@ export async function syncUserLeadsMetrics(
 ): Promise<DashboardSyncSummary> {
   const rates = usdRates || (await fetchUsdRates());
   const rows = await getUserAdAccounts(userId);
+  const reportingTimezone = await getUserReportingTimezone(userId);
   const classifiedLeadAdsets = await getClassifiedAdsetsForUser(userId, "LEADS");
 
   const leadAdsetsByAccount = new Map<string, Map<string, string | null>>();
@@ -1514,7 +1542,7 @@ export async function syncUserLeadsMetrics(
   const accountRows: LeadsAdAccountMetricRow[] = [];
 
   const nowIso = new Date().toISOString();
-  const sourceDate = nowIso.slice(0, 10);
+  const sourceDate = formatDateInTimezone(nowIso, reportingTimezone);
 
   for (const ad of rows) {
     const accountEdgeId = ad.facebook_ad_account_id.startsWith("act_")
@@ -1664,6 +1692,7 @@ export async function syncUserBrandingMetrics(
 ): Promise<BrandingSyncSummary> {
   const rates = usdRates || (await fetchUsdRates());
   const rows = await getUserAdAccounts(userId);
+  const reportingTimezone = await getUserReportingTimezone(userId);
   const classifiedBrandingAdsets = await getClassifiedAdsetsForUser(userId, "AWARENESS");
 
   const brandingAdsetsByAccount = new Map<string, Map<string, string | null>>();
@@ -1680,7 +1709,7 @@ export async function syncUserBrandingMetrics(
   const accountRows: BrandingAdAccountMetricRow[] = [];
 
   const nowIso = new Date().toISOString();
-  const sourceDate = nowIso.slice(0, 10);
+  const sourceDate = formatDateInTimezone(nowIso, reportingTimezone);
 
   for (const ad of rows) {
     const accountEdgeId = ad.facebook_ad_account_id.startsWith("act_")
@@ -1831,6 +1860,7 @@ export async function syncUserSalesMetrics(
 ): Promise<BrandingSyncSummary> {
   const rates = usdRates || (await fetchUsdRates());
   const rows = await getUserAdAccounts(userId);
+  const reportingTimezone = await getUserReportingTimezone(userId);
   const classifiedSalesAdsets = await getClassifiedAdsetsForUser(userId, "SALES");
 
   const salesAdsetsByAccount = new Map<string, Map<string, string | null>>();
@@ -1847,7 +1877,7 @@ export async function syncUserSalesMetrics(
   const accountRows: SalesAdAccountMetricRow[] = [];
 
   const nowIso = new Date().toISOString();
-  const sourceDate = nowIso.slice(0, 10);
+  const sourceDate = formatDateInTimezone(nowIso, reportingTimezone);
 
   for (const ad of rows) {
     const accountEdgeId = ad.facebook_ad_account_id.startsWith("act_")
@@ -2023,8 +2053,9 @@ export async function syncUserPerformanceMonitoring(
 ): Promise<{ userId: string; entitiesTracked: number }> {
   const rates = usdRates || (await fetchUsdRates());
   const rows = await getUserAdAccounts(userId);
+  const reportingTimezone = await getUserReportingTimezone(userId);
   const nowIso = new Date().toISOString();
-  const sourceDate = nowIso.slice(0, 10);
+  const sourceDate = formatDateInTimezone(nowIso, reportingTimezone);
   const snapshotTime = getRoundedSnapshotTime(nowIso);
 
   const { data: previousStateRows, error: previousStateError } = await supabaseAdmin
