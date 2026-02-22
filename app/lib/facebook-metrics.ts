@@ -5,6 +5,7 @@ import {
   type ClassificationResult,
   type PerformanceType,
 } from "./adset-classification";
+import { createOpenAiClient, extractJsonObject } from "./openai-client";
 
 type GraphPagingResponse<T> = {
   data?: T[];
@@ -725,11 +726,13 @@ async function getOpenAiRecommendations(
   const resultMap = new Map<string, { recommendation: AiRecommendation; reason: string; confidence: number }>();
   if (rows.length === 0) return resultMap;
 
-  const payload = {
-    model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+  const client = createOpenAiClient(apiKey);
+  const model = process.env.OPENAI_MODEL || "gpt-4o-mini";
+
+  const response = await client.responses.create({
+    model,
     temperature: 0.1,
-    response_format: { type: "json_object" },
-    messages: [
+    input: [
       {
         role: "system",
         content: OPENAI_PERFORMANCE_SYSTEM_PROMPT,
@@ -738,32 +741,15 @@ async function getOpenAiRecommendations(
         role: "user",
         content: JSON.stringify({
           instruction:
-            "Analiza tendencia del dia por entidad y decide recommendation. reason en espanol max 10 palabras.",
+            "Analiza tendencia del dia por entidad y decide recommendation. reason en espanol max 10 palabras. Devuelve solo JSON.",
           rows,
         }),
       },
     ],
-  };
-
-  const response = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(payload),
   });
 
-  if (!response.ok) {
-    const text = await response.text();
-    throw new Error(`OpenAI failed: ${text.slice(0, 180)}`);
-  }
-
-  const data = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
-  };
-  const raw = data.choices?.[0]?.message?.content || "";
-  const parsed = JSON.parse(raw) as {
+  const raw = response.output_text || "";
+  const parsed = extractJsonObject(raw) as {
     items?: Array<{ key?: string; recommendation?: string; reason?: string; confidence?: number }>;
   };
 
