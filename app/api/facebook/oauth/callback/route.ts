@@ -130,10 +130,15 @@ export async function GET(request: NextRequest) {
 
     const meUrl =
       `${GRAPH_BASE_URL}/me` +
-      `?fields=id,name,email` +
+      `?fields=id,name,email,picture.width(200).height(200){url}` +
       `&access_token=${encodeURIComponent(longToken.access_token)}`;
 
-    const me = await fetchJson<{ id: string; name?: string; email?: string }>(meUrl);
+    const me = await fetchJson<{
+      id: string;
+      name?: string;
+      email?: string;
+      picture?: { data?: { url?: string } };
+    }>(meUrl);
 
     const expiresAt =
       debugToken.data?.expires_at && debugToken.data.expires_at > 0
@@ -153,6 +158,7 @@ export async function GET(request: NextRequest) {
           scopes: debugToken.data?.scopes || [],
           facebook_name: me.name || null,
           facebook_email: me.email || null,
+          facebook_profile_picture_url: me.picture?.data?.url || null,
         },
         { onConflict: "user_id" }
       )

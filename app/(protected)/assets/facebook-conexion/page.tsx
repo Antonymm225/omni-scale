@@ -9,6 +9,7 @@ type FacebookConnection = {
   facebook_user_id: string | null;
   facebook_email: string | null;
   token_expires_at: string | null;
+  facebook_profile_picture_url: string | null;
 };
 
 type BusinessManager = {
@@ -103,7 +104,7 @@ export default function FacebookConexionPage() {
       const [connectionRes, bmRes, adRes, pagesRes, igRes, pixelsRes] = await Promise.all([
         supabase
           .from("facebook_connections")
-          .select("facebook_name,facebook_user_id,facebook_email,token_expires_at")
+          .select("facebook_name,facebook_user_id,facebook_email,token_expires_at,facebook_profile_picture_url")
           .eq("user_id", user.id)
           .maybeSingle(),
         supabase
@@ -292,16 +293,29 @@ export default function FacebookConexionPage() {
 
         <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <p className="text-sm font-semibold text-emerald-600">Conexión activa</p>
-              <h2 className="mt-1 text-xl font-semibold text-[#111827]">
-                {connection?.facebook_name || "Sin conexión activa"}
-              </h2>
-              <p className="mt-1 text-sm text-slate-600">
-                ID: {connection?.facebook_user_id || "No disponible"}
-                {connection?.facebook_email ? ` | ${connection.facebook_email}` : ""}
-                {expiryText ? ` | Expira: ${expiryText}` : ""}
-              </p>
+            <div className="flex items-center gap-4">
+              {connection?.facebook_profile_picture_url ? (
+                <img
+                  src={connection.facebook_profile_picture_url}
+                  alt={connection.facebook_name || "Perfil de Facebook"}
+                  className="h-14 w-14 rounded-full border border-slate-200 object-cover"
+                />
+              ) : (
+                <div className="flex h-14 w-14 items-center justify-center rounded-full border border-slate-200 bg-slate-100 text-lg font-semibold text-slate-600">
+                  {(connection?.facebook_name || "?").trim().charAt(0).toUpperCase() || "?"}
+                </div>
+              )}
+              <div>
+                <p className="text-sm font-semibold text-emerald-600">Conexión activa</p>
+                <h2 className="mt-1 text-xl font-semibold text-[#111827]">
+                  {connection?.facebook_name || "Sin conexión activa"}
+                </h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  ID: {connection?.facebook_user_id || "No disponible"}
+                  {connection?.facebook_email ? ` | ${connection.facebook_email}` : ""}
+                  {expiryText ? ` | Expira: ${expiryText}` : ""}
+                </p>
+              </div>
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
