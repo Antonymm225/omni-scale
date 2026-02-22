@@ -471,6 +471,7 @@ export default function PerformanceCategoryPage(props: Props) {
               timeZone={timezoneName}
               resultLabel={props.tooltipResultsLabel || props.resultTerm}
               currencySymbol={props.chartCurrencySymbol || "$"}
+              showEndLabels={range === "today"}
             />
             {tooltip ? (
               <div
@@ -583,6 +584,7 @@ function GenericLineChart({
   timeZone,
   resultLabel,
   currencySymbol,
+  showEndLabels,
 }: {
   series: SeriesPoint[];
   onHover: (tooltip: ChartTooltip | null) => void;
@@ -591,6 +593,7 @@ function GenericLineChart({
   timeZone: string;
   resultLabel: string;
   currencySymbol: string;
+  showEndLabels: boolean;
 }) {
   const width = 980;
   const height = 280;
@@ -830,11 +833,13 @@ function GenericLineChart({
       {resultsPath ? <path d={resultsPath} fill="none" stroke="#10b981" strokeWidth="2.8" strokeLinecap="round" /> : null}
       {cprPath ? <path d={cprPath} fill="none" stroke="#7c3aed" strokeWidth="2.8" strokeLinecap="round" /> : null}
 
-      {endLabels.map((label) => (
-        <text key={label.key} x={label.x} y={label.y} fontSize="10" fill={label.color}>
-          {label.text}
-        </text>
-      ))}
+      {showEndLabels
+        ? endLabels.map((label) => (
+            <text key={label.key} x={label.x} y={label.y} fontSize="10" fill={label.color}>
+              {label.text}
+            </text>
+          ))
+        : null}
 
       {spendPath ? (
         <path
