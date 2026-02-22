@@ -397,6 +397,22 @@ function parseSalesResultCount(actions?: Array<{ action_type?: string; value?: s
 
 type MonitoringTrend = "improving" | "stable" | "worsening";
 type MonitoringHealth = "good" | "watch" | "bad";
+type AiRecommendation = "improving" | "stable" | "scale" | "worsening";
+type AiAction = "none" | "scale_up" | "pause_ad" | "pause_adset" | "pause_campaign" | "pause_account";
+type AiRunStatus = "idle" | "running" | "completed" | "skipped" | "error";
+
+const OPENAI_PERFORMANCE_SYSTEM_PROMPT =
+  process.env.OPENAI_PERFORMANCE_SYSTEM_PROMPT ||
+  [
+    "You are an elite Meta Ads performance analyst.",
+    "Analyze trend features for each entity and return strict JSON only.",
+    "Output format:",
+    "{\"items\":[{\"key\":\"...\",\"recommendation\":\"improving|stable|scale|worsening\",\"confidence\":0-100,\"reason\":\"max 10 Spanish words\"}]}",
+    "Rules:",
+    "- Base decision on trend of the day, not only current point.",
+    "- Use spend, results, cost_per_result, cpm, ctr, cpc and feature deltas.",
+    "- If data is noisy/low volume, prefer stable with medium confidence.",
+  ].join(" ");
 
 function getTrend(
   currentCpr: number | null,
@@ -426,6 +442,523 @@ function getHealth(
   if (trend === "worsening" && cpr != null) return "bad";
   if (results >= 5 && (trend === "improving" || cpr == null || cpr <= 3)) return "good";
   return "watch";
+}
+
+function getCpcUsd(spendUsd: number, clicks: number) {
+  if (clicks <= 0) return null;
+  return Number((spendUsd / clicks).toFixed(4));
+}
+
+function normalizeAiReasonShort(reason: string) {
+  const words = reason
+    .trim()
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 10);
+  return words.join(" ");
+}
+
+type FeaturePoint = {
+  at: string;
+  spendUsd: number;
+  resultsCount: number;
+  costPerResultUsd: number | null;
+  cpm: number | null;
+  ctr: number | null;
+  cpcUsd: number | null;
+};
+
+type AiFeatureVector = {
+  pointsDay: number;
+  spendDelta30m: number;
+  resultsDelta30m: number;
+  cprDelta30mPct: number | null;
+  cprDelta120mPct: number | null;
+  ctrDelta120mPct: number | null;
+  cpcDelta120mPct: number | null;
+  cpmDelta120mPct: number | null;
+  resultsGrowthDay: number;
+  cprVolatility: number | null;
+  summary: string;
+};
+
+function clamp(value: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, value));
+}
+
+function pctDelta(current: number | null, previous: number | null) {
+  if (current == null || previous == null || previous === 0) return null;
+  return (current - previous) / Math.abs(previous);
+}
+
+function stdDev(values: number[]) {
+  if (values.length < 2) return 0;
+  const mean = values.reduce((sum, v) => sum + v, 0) / values.length;
+  const variance = values.reduce((sum, v) => sum + (v - mean) ** 2, 0) / values.length;
+  return Math.sqrt(variance);
+}
+
+function getClosestPointBefore(points: FeaturePoint[], targetMs: number) {
+  let candidate: FeaturePoint | null = null;
+  for (const p of points) {
+    const pMs = new Date(p.at).getTime();
+    if (pMs <= targetMs) candidate = p;
+  }
+  return candidate;
+}
+
+function summarizeFeatureVector(feature: AiFeatureVector) {
+  const cpr120 =
+    feature.cprDelta120mPct == null ? "na" : `${(feature.cprDelta120mPct * 100).toFixed(1)}%`;
+  const ctr120 =
+    feature.ctrDelta120mPct == null ? "na" : `${(feature.ctrDelta120mPct * 100).toFixed(1)}%`;
+  return `pts:${feature.pointsDay} d30s:${feature.spendDelta30m.toFixed(2)} d30r:${feature.resultsDelta30m} cpr120:${cpr120} ctr120:${ctr120}`;
+}
+
+function buildAiFeatureVector(points: FeaturePoint[]): AiFeatureVector {
+  const sorted = [...points].sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
+  const current = sorted[sorted.length - 1];
+  const nowMs = new Date(current.at).getTime();
+  const p30 = getClosestPointBefore(sorted, nowMs - 30 * 60 * 1000);
+  const p120 = getClosestPointBefore(sorted, nowMs - 120 * 60 * 1000);
+  const first = sorted[0];
+  const cprSeries = sorted
+    .map((p) => (p.costPerResultUsd == null ? null : Number(p.costPerResultUsd)))
+    .filter((v): v is number => v != null);
+  const vol = cprSeries.length > 1 ? stdDev(cprSeries) : null;
+
+  const vector: AiFeatureVector = {
+    pointsDay: sorted.length,
+    spendDelta30m: Number((current.spendUsd - (p30?.spendUsd || current.spendUsd)).toFixed(2)),
+    resultsDelta30m: current.resultsCount - (p30?.resultsCount || current.resultsCount),
+    cprDelta30mPct: pctDelta(current.costPerResultUsd, p30?.costPerResultUsd ?? null),
+    cprDelta120mPct: pctDelta(current.costPerResultUsd, p120?.costPerResultUsd ?? null),
+    ctrDelta120mPct: pctDelta(current.ctr, p120?.ctr ?? null),
+    cpcDelta120mPct: pctDelta(current.cpcUsd, p120?.cpcUsd ?? null),
+    cpmDelta120mPct: pctDelta(current.cpm, p120?.cpm ?? null),
+    resultsGrowthDay: current.resultsCount - first.resultsCount,
+    cprVolatility: vol == null ? null : Number(vol.toFixed(3)),
+    summary: "",
+  };
+  vector.summary = summarizeFeatureVector(vector);
+  return vector;
+}
+
+function getRuleConfidence(
+  row: Record<string, unknown>,
+  feature: AiFeatureVector | undefined
+) {
+  let score = 50;
+  const trend = (row.trend as MonitoringTrend) || "stable";
+  const health = (row.health as MonitoringHealth) || "watch";
+  const spend = Number(row.spend_usd || 0);
+  const results = Number(row.results_count || 0);
+
+  if (feature) {
+    if (feature.pointsDay >= 6) score += 10;
+    if (feature.pointsDay >= 12) score += 8;
+    if ((feature.resultsDelta30m >= 2 || feature.resultsGrowthDay >= 4) && spend > 0) score += 8;
+    if ((feature.cprDelta120mPct ?? 0) <= -0.1 || (feature.cprDelta120mPct ?? 0) >= 0.12) score += 8;
+    if ((feature.ctrDelta120mPct ?? 0) >= 0.1 || (feature.cpcDelta120mPct ?? 0) <= -0.1) score += 6;
+    if ((feature.cprVolatility ?? 0) > 6) score -= 8;
+  }
+
+  if (trend === "worsening" && health === "bad") score += 8;
+  if (trend === "improving" && results >= 3) score += 8;
+  if (spend < 5 && results === 0) score -= 10;
+
+  return clamp(Math.round(score), 35, 95);
+}
+
+function getRuleBasedAiRecommendation(params: {
+  trend: MonitoringTrend;
+  health: MonitoringHealth;
+  resultsCount: number;
+  costPerResultUsd: number | null;
+  cpm: number | null;
+  ctr: number | null;
+  cpcUsd: number | null;
+}): { recommendation: AiRecommendation; reason: string } {
+  const { trend, health, resultsCount, costPerResultUsd, cpm, ctr, cpcUsd } = params;
+
+  if (trend === "improving" && resultsCount >= 3) {
+    return { recommendation: "scale", reason: "Sube resultados con costo estable, puedes escalar" };
+  }
+  if (trend === "worsening" || health === "bad") {
+    return { recommendation: "worsening", reason: "Sube costo y cae rendimiento del activo" };
+  }
+  if (health === "good" && (ctr ?? 0) >= 1) {
+    return { recommendation: "improving", reason: "Buen CTR y conversion consistente en el periodo" };
+  }
+  if ((costPerResultUsd ?? 0) > 0 && (cpcUsd ?? 0) > 0 && (cpm ?? 0) > 0) {
+    return { recommendation: "stable", reason: "Metricas estables sin cambios fuertes recientes" };
+  }
+  return { recommendation: "stable", reason: "Volumen bajo aun, mantener observacion en curso" };
+}
+
+function getAiSlotIso(nowIso: string) {
+  const d = new Date(nowIso);
+  d.setUTCSeconds(0, 0);
+  d.setUTCMinutes(Math.floor(d.getUTCMinutes() / 30) * 30);
+  return d.toISOString();
+}
+
+function shouldAnalyzeWithOpenAi(
+  row: Record<string, unknown>,
+  previous: { cost_per_result_usd: number | null; results_count: number | null } | undefined,
+  feature: AiFeatureVector | undefined
+) {
+  const entityType = (row.entity_type as string) || "";
+  const spendUsd = Number(row.spend_usd || 0);
+  const results = Number(row.results_count || 0);
+  const health = (row.health as string) || "watch";
+  const trend = (row.trend as string) || "stable";
+  const currentCpr = row.cost_per_result_usd == null ? null : Number(row.cost_per_result_usd);
+  const previousCpr = previous?.cost_per_result_usd ?? null;
+  const previousResults = previous?.results_count ?? null;
+
+  // Accounts are derived from children; no direct OpenAI analysis at account level.
+  if (entityType === "account") return false;
+  if (entityType === "campaign" && spendUsd > 0 && (feature?.pointsDay || 0) >= 3) return true;
+  if (health === "bad" || trend === "worsening") return true;
+  if (spendUsd >= 20) return true;
+  if (results >= 5 && trend !== "stable") return true;
+
+  if (feature) {
+    if (Math.abs(feature.cprDelta120mPct ?? 0) >= 0.12) return true;
+    if (Math.abs(feature.ctrDelta120mPct ?? 0) >= 0.15) return true;
+    if (Math.abs(feature.cpcDelta120mPct ?? 0) >= 0.15) return true;
+    if (Math.abs(feature.cpmDelta120mPct ?? 0) >= 0.15) return true;
+    if (Math.abs(feature.resultsDelta30m) >= 2) return true;
+  }
+
+  if (currentCpr != null && previousCpr != null && previousCpr > 0) {
+    const cprDelta = Math.abs(currentCpr - previousCpr) / previousCpr;
+    if (cprDelta >= 0.15) return true;
+  }
+  if (previousResults != null && previousResults > 0) {
+    const resultsDelta = Math.abs(results - previousResults) / previousResults;
+    if (resultsDelta >= 0.2) return true;
+  }
+
+  return false;
+}
+
+async function acquireAiRunSlot(userId: string, slotIso: string) {
+  const { data: runData, error: runError } = await supabaseAdmin
+    .from("facebook_ai_runs")
+    .select("last_ai_run_at")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (runError) throw new Error(runError.message);
+
+  const alreadyRan =
+    runData?.last_ai_run_at && new Date(runData.last_ai_run_at as string).getTime() >= new Date(slotIso).getTime();
+  if (alreadyRan) return false;
+
+  const { error: upsertError } = await supabaseAdmin
+    .from("facebook_ai_runs")
+    .upsert({ user_id: userId, last_ai_run_at: slotIso }, { onConflict: "user_id" });
+  if (upsertError) throw new Error(upsertError.message);
+  return true;
+}
+
+async function updateAiRunTelemetry(
+  userId: string,
+  payload: {
+    last_ai_run_at?: string | null;
+    last_slot_at?: string | null;
+    last_status?: AiRunStatus | null;
+    last_error?: string | null;
+    last_openai_entities?: number | null;
+    last_total_entities?: number | null;
+    last_model?: string | null;
+  }
+) {
+  try {
+    const { error } = await supabaseAdmin
+      .from("facebook_ai_runs")
+      .upsert({ user_id: userId, ...payload }, { onConflict: "user_id" });
+    if (error) {
+      console.error("[facebook-metrics] ai telemetry upsert failed", { userId, message: error.message });
+    }
+  } catch (err) {
+    console.error("[facebook-metrics] ai telemetry upsert exception", {
+      userId,
+      message: err instanceof Error ? err.message : "unknown",
+    });
+  }
+}
+
+async function getUserOpenAiApiKey(userId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("user_integrations")
+    .select("openai_api_key")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const key = (data?.openai_api_key as string | null) || null;
+  return key && key.trim() ? key.trim() : null;
+}
+
+type AiRowInput = {
+  key: string;
+  entity_type: string;
+  entity_id: string;
+  spend_usd: number;
+  results_count: number;
+  cost_per_result_usd: number | null;
+  cpm: number | null;
+  ctr: number | null;
+  cpc_usd: number | null;
+  trend: MonitoringTrend;
+  health: MonitoringHealth;
+  feature: AiFeatureVector | null;
+};
+
+async function getOpenAiRecommendations(
+  apiKey: string,
+  rows: AiRowInput[]
+): Promise<Map<string, { recommendation: AiRecommendation; reason: string; confidence: number }>> {
+  const resultMap = new Map<string, { recommendation: AiRecommendation; reason: string; confidence: number }>();
+  if (rows.length === 0) return resultMap;
+
+  const payload = {
+    model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+    temperature: 0.1,
+    response_format: { type: "json_object" },
+    messages: [
+      {
+        role: "system",
+        content: OPENAI_PERFORMANCE_SYSTEM_PROMPT,
+      },
+      {
+        role: "user",
+        content: JSON.stringify({
+          instruction:
+            "Analiza tendencia del dia por entidad y decide recommendation. reason en espanol max 10 palabras.",
+          rows,
+        }),
+      },
+    ],
+  };
+
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`OpenAI failed: ${text.slice(0, 180)}`);
+  }
+
+  const data = (await response.json()) as {
+    choices?: Array<{ message?: { content?: string } }>;
+  };
+  const raw = data.choices?.[0]?.message?.content || "";
+  const parsed = JSON.parse(raw) as {
+    items?: Array<{ key?: string; recommendation?: string; reason?: string; confidence?: number }>;
+  };
+
+  (parsed.items || []).forEach((item) => {
+    if (!item.key) return;
+    const rec = (item.recommendation || "").toLowerCase();
+    if (rec !== "improving" && rec !== "stable" && rec !== "scale" && rec !== "worsening") return;
+    resultMap.set(item.key, {
+      recommendation: rec as AiRecommendation,
+      reason: normalizeAiReasonShort(item.reason || "Analisis AI"),
+      confidence: clamp(Number(item.confidence || 65), 35, 99),
+    });
+  });
+
+  return resultMap;
+}
+
+type SnapshotFeatureRow = {
+  entity_type: string;
+  entity_id: string;
+  snapshot_time: string;
+  spend_usd: number | null;
+  results_count: number | null;
+  cost_per_result_usd: number | null;
+  cpm: number | null;
+  ctr: number | null;
+  cpc_usd: number | null;
+};
+
+async function getTodayFeatureMap(
+  userId: string,
+  sourceDate: string,
+  currentRows: Array<Record<string, unknown>>
+) {
+  const { data, error } = await supabaseAdmin
+    .from("facebook_performance_snapshots")
+    .select("entity_type,entity_id,snapshot_time,spend_usd,results_count,cost_per_result_usd,cpm,ctr,cpc_usd")
+    .eq("user_id", userId)
+    .eq("source_date", sourceDate);
+  if (error) throw new Error(error.message);
+
+  const byKey = new Map<string, FeaturePoint[]>();
+  ((data || []) as SnapshotFeatureRow[]).forEach((row) => {
+    const key = `${row.entity_type}:${row.entity_id}`;
+    const items = byKey.get(key) || [];
+    items.push({
+      at: row.snapshot_time,
+      spendUsd: Number(row.spend_usd || 0),
+      resultsCount: Number(row.results_count || 0),
+      costPerResultUsd: row.cost_per_result_usd == null ? null : Number(row.cost_per_result_usd),
+      cpm: row.cpm == null ? null : Number(row.cpm),
+      ctr: row.ctr == null ? null : Number(row.ctr),
+      cpcUsd: row.cpc_usd == null ? null : Number(row.cpc_usd),
+    });
+    byKey.set(key, items);
+  });
+
+  currentRows.forEach((row) => {
+    const key = `${row.entity_type as string}:${row.entity_id as string}`;
+    const items = byKey.get(key) || [];
+    items.push({
+      at: (row.last_synced_at as string) || new Date().toISOString(),
+      spendUsd: Number(row.spend_usd || 0),
+      resultsCount: Number(row.results_count || 0),
+      costPerResultUsd: row.cost_per_result_usd == null ? null : Number(row.cost_per_result_usd),
+      cpm: row.cpm == null ? null : Number(row.cpm),
+      ctr: row.ctr == null ? null : Number(row.ctr),
+      cpcUsd: row.cpc_usd == null ? null : Number(row.cpc_usd),
+    });
+    byKey.set(key, items);
+  });
+
+  const featureMap = new Map<string, AiFeatureVector>();
+  byKey.forEach((points, key) => {
+    if (points.length === 0) return;
+    featureMap.set(key, buildAiFeatureVector(points));
+  });
+  return featureMap;
+}
+
+function deriveAccountAiFromCampaigns(rows: Array<Record<string, unknown>>) {
+  const accountRows = rows.filter((row) => row.entity_type === "account");
+  const campaignRows = rows.filter((row) => row.entity_type === "campaign");
+  const recWeight = (value: AiRecommendation | null | undefined) => {
+    if (value === "scale") return 2;
+    if (value === "improving") return 1;
+    if (value === "worsening") return -2;
+    return 0;
+  };
+
+  accountRows.forEach((accountRow) => {
+    const accountKey = accountRow.facebook_ad_account_id as string;
+    const children = campaignRows.filter(
+      (campaignRow) => (campaignRow.facebook_ad_account_id as string) === accountKey
+    );
+    if (children.length === 0) {
+      accountRow.ai_recommendation = "stable";
+      accountRow.ai_confidence_score = 50;
+      accountRow.ai_reason_short = "Sin campanas hijas para evaluar";
+      accountRow.ai_model = "derived";
+      return;
+    }
+
+    const allWorsening = children.every(
+      (child) => ((child.ai_recommendation as AiRecommendation | null) || "stable") === "worsening"
+    );
+    if (allWorsening) {
+      accountRow.ai_recommendation = "worsening";
+      accountRow.ai_confidence_score = 92;
+      accountRow.ai_reason_short = "Todas las campanas empeoran en la cuenta";
+      accountRow.ai_model = "derived";
+      return;
+    }
+
+    let totalWeight = 0;
+    let weightedRec = 0;
+    let weightedConfidence = 0;
+    children.forEach((child) => {
+      const spend = Number(child.spend_usd || 0);
+      const weight = spend > 0 ? spend : 1;
+      totalWeight += weight;
+      weightedRec += recWeight((child.ai_recommendation as AiRecommendation | null) || "stable") * weight;
+      weightedConfidence += Number(child.ai_confidence_score || 55) * weight;
+    });
+
+    const recScore = totalWeight > 0 ? weightedRec / totalWeight : 0;
+    const confidence = totalWeight > 0 ? Math.round(weightedConfidence / totalWeight) : 55;
+    const recommendation: AiRecommendation =
+      recScore >= 0.9 ? "scale" : recScore >= 0.2 ? "improving" : recScore <= -0.8 ? "worsening" : "stable";
+
+    accountRow.ai_recommendation = recommendation;
+    accountRow.ai_confidence_score = clamp(confidence, 35, 95);
+    accountRow.ai_reason_short =
+      recommendation === "scale"
+        ? "Campanas fuertes sostienen rendimiento para escalar"
+        : recommendation === "improving"
+          ? "Campanas mejoran en costo y volumen"
+          : recommendation === "worsening"
+            ? "Campanas con deterioro sostenido de rendimiento"
+            : "Cuenta estable por promedio de campanas";
+    accountRow.ai_model = "derived";
+    accountRow.ai_feature_summary = "derived_from_campaign_children";
+  });
+}
+
+function applyHierarchicalAiActions(rows: Array<Record<string, unknown>>) {
+  const getRec = (row: Record<string, unknown>) => (row.ai_recommendation as AiRecommendation | null) || "stable";
+  const setAction = (row: Record<string, unknown>, action: AiAction) => {
+    row.ai_action = action;
+  };
+
+  rows.forEach((row) => {
+    setAction(row, getRec(row) === "scale" ? "scale_up" : "none");
+  });
+
+  const adRows = rows.filter((row) => row.entity_type === "ad");
+  adRows.forEach((row) => {
+    if (getRec(row) === "worsening") setAction(row, "pause_ad");
+  });
+
+  const adsetRows = rows.filter((row) => row.entity_type === "adset");
+  adsetRows.forEach((adsetRow) => {
+    const adsetId = adsetRow.entity_id as string;
+    const children = adRows.filter((adRow) => (adRow.adset_id as string | null) === adsetId);
+    if (
+      getRec(adsetRow) === "worsening" ||
+      (children.length > 0 && children.every((child) => getRec(child) === "worsening"))
+    ) {
+      setAction(adsetRow, "pause_adset");
+    }
+  });
+
+  const campaignRows = rows.filter((row) => row.entity_type === "campaign");
+  campaignRows.forEach((campaignRow) => {
+    const campaignId = campaignRow.entity_id as string;
+    const children = adsetRows.filter((adsetRow) => (adsetRow.campaign_id as string | null) === campaignId);
+    if (
+      getRec(campaignRow) === "worsening" ||
+      (children.length > 0 && children.every((child) => getRec(child) === "worsening"))
+    ) {
+      setAction(campaignRow, "pause_campaign");
+    }
+  });
+
+  const accountRows = rows.filter((row) => row.entity_type === "account");
+  accountRows.forEach((accountRow) => {
+    const accountId = accountRow.facebook_ad_account_id as string;
+    const children = campaignRows.filter((campaignRow) => (campaignRow.facebook_ad_account_id as string) === accountId);
+    if (
+      getRec(accountRow) === "worsening" ||
+      (children.length > 0 && children.every((child) => getRec(child) === "worsening"))
+    ) {
+      setAction(accountRow, "pause_account");
+    }
+  });
 }
 
 async function getUserAdAccounts(userId: string) {
@@ -561,6 +1094,59 @@ async function applyDailyRetention(table: string, userId: string, nowIso: string
     .lt("source_date", cutoffDate);
 
   if (error) throw new Error(error.message);
+}
+
+async function applyPerformanceSnapshotRetention(userId: string, nowIso: string) {
+  const now = new Date(nowIso);
+  const cutoff = new Date(now);
+  cutoff.setUTCDate(cutoff.getUTCDate() - 7);
+  const cutoffIso = cutoff.toISOString();
+
+  const { error: deleteOldError } = await supabaseAdmin
+    .from("facebook_performance_snapshots")
+    .delete()
+    .eq("user_id", userId)
+    .lt("snapshot_time", cutoffIso);
+  if (deleteOldError) throw new Error(deleteOldError.message);
+
+  const yesterdayStart = new Date(now);
+  yesterdayStart.setUTCHours(0, 0, 0, 0);
+  yesterdayStart.setUTCDate(yesterdayStart.getUTCDate() - 1);
+  const yesterdayStartIso = yesterdayStart.toISOString();
+
+  const { data: oldRows, error: oldRowsError } = await supabaseAdmin
+    .from("facebook_performance_snapshots")
+    .select("id,entity_type,entity_id,source_date,snapshot_time")
+    .eq("user_id", userId)
+    .lt("snapshot_time", yesterdayStartIso)
+    .gte("snapshot_time", cutoffIso)
+    .order("entity_type", { ascending: true })
+    .order("entity_id", { ascending: true })
+    .order("source_date", { ascending: true })
+    .order("snapshot_time", { ascending: false });
+
+  if (oldRowsError) throw new Error(oldRowsError.message);
+
+  const keepByKey = new Set<string>();
+  const deleteIds: string[] = [];
+
+  (oldRows || []).forEach((row) => {
+    const key = `${row.entity_type as string}:${row.entity_id as string}:${row.source_date as string}`;
+    const id = row.id as string;
+    if (!keepByKey.has(key)) {
+      keepByKey.add(key);
+      return;
+    }
+    deleteIds.push(id);
+  });
+
+  if (deleteIds.length > 0) {
+    const { error: deleteCompactedError } = await supabaseAdmin
+      .from("facebook_performance_snapshots")
+      .delete()
+      .in("id", deleteIds);
+    if (deleteCompactedError) throw new Error(deleteCompactedError.message);
+  }
 }
 
 export async function syncUserDashboardMetrics(
@@ -1467,6 +2053,11 @@ export async function syncUserPerformanceMonitoring(
       ? ad.facebook_ad_account_id
       : `act_${ad.account_id || ad.facebook_ad_account_id}`;
 
+    const accountMeta = await fetchJson<{ account_status?: number }>(
+      `${GRAPH_BASE_URL}/${accountEdgeId}?fields=account_status&access_token=${encodeURIComponent(token)}`
+    ).catch((): { account_status?: number } => ({}));
+    const accountEffectiveStatus = accountMeta.account_status === 1 ? "ACTIVE" : "INACTIVE";
+
     const campaignStatuses = await graphFetchPaginated<GraphCampaign>(
       `${GRAPH_BASE_URL}/${accountEdgeId}/campaigns?fields=id,status,effective_status&limit=500&access_token=${encodeURIComponent(token)}`,
       20
@@ -1484,7 +2075,7 @@ export async function syncUserPerformanceMonitoring(
     const adsetStatusMap = new Map(adsetStatuses.map((item) => [item.id, item]));
     const adStatusMap = new Map(adStatuses.map((item) => [item.id, item]));
 
-    const levels: Array<"campaign" | "adset" | "ad"> = ["campaign", "adset", "ad"];
+    const levels: Array<"account" | "campaign" | "adset" | "ad"> = ["account", "campaign", "adset", "ad"];
 
     for (const level of levels) {
       const insights = await graphFetchPaginated<GraphInsight>(
@@ -1494,13 +2085,17 @@ export async function syncUserPerformanceMonitoring(
 
       for (const insightRow of insights) {
         const entityId =
-          level === "campaign"
+          level === "account"
+            ? ad.facebook_ad_account_id
+            : level === "campaign"
             ? insightRow.campaign_id
             : level === "adset"
               ? insightRow.adset_id
               : insightRow.ad_id;
         const entityName =
-          level === "campaign"
+          level === "account"
+            ? ad.name
+            : level === "campaign"
             ? insightRow.campaign_name
             : level === "adset"
               ? insightRow.adset_name
@@ -1511,6 +2106,8 @@ export async function syncUserPerformanceMonitoring(
         const spendOriginal = Number(insightRow.spend || 0);
         const spendUsd = convertToUsd(spendOriginal, ad.currency, rates);
         const resultsCount = parseUnifiedResultCount(insightRow.actions);
+        const clicks = Number(insightRow.clicks || 0);
+        const cpcUsd = getCpcUsd(spendUsd, clicks);
         const costPerResultUsd =
           resultsCount > 0 ? Number((spendUsd / resultsCount).toFixed(2)) : null;
 
@@ -1525,14 +2122,26 @@ export async function syncUserPerformanceMonitoring(
         const health = getHealth(spendUsd, resultsCount, costPerResultUsd, trend);
 
         const statusSource =
-          level === "campaign"
+          level === "account"
+            ? null
+            : level === "campaign"
             ? campaignStatusMap.get(entityId)
             : level === "adset"
               ? adsetStatusMap.get(entityId)
               : adStatusMap.get(entityId);
 
-        const configuredStatus = statusSource?.status || null;
-        const effectiveStatus = statusSource?.effective_status || null;
+        const configuredStatus = level === "account" ? accountEffectiveStatus : statusSource?.status || null;
+        const effectiveStatus = level === "account" ? accountEffectiveStatus : statusSource?.effective_status || null;
+
+        const ruleDecision = getRuleBasedAiRecommendation({
+          trend,
+          health,
+          resultsCount,
+          costPerResultUsd,
+          cpm: insightRow.cpm != null ? Number(insightRow.cpm) : null,
+          ctr: insightRow.ctr != null ? Number(insightRow.ctr) : null,
+          cpcUsd,
+        });
 
         const rowBase = {
           user_id: userId,
@@ -1556,12 +2165,20 @@ export async function syncUserPerformanceMonitoring(
           results_count: resultsCount,
           cost_per_result_usd: costPerResultUsd,
           impressions: Number(insightRow.impressions || 0),
-          clicks: Number(insightRow.clicks || 0),
+          clicks,
           ctr: insightRow.ctr != null ? Number(insightRow.ctr) : null,
           cpm: insightRow.cpm != null ? Number(insightRow.cpm) : null,
+          cpc_usd: cpcUsd,
           frequency: insightRow.frequency != null ? Number(insightRow.frequency) : null,
           trend,
           health,
+          ai_recommendation: ruleDecision.recommendation,
+          ai_reason_short: normalizeAiReasonShort(ruleDecision.reason),
+          ai_confidence_score: 50,
+          ai_feature_summary: null as string | null,
+          ai_action: ruleDecision.recommendation === "scale" ? "scale_up" : "none",
+          ai_analyzed_at: nowIso,
+          ai_model: "rule",
           source_date: sourceDate,
           last_synced_at: nowIso,
         };
@@ -1579,12 +2196,136 @@ export async function syncUserPerformanceMonitoring(
     }
   }
 
+  const featureMap = await getTodayFeatureMap(userId, sourceDate, stateRows);
+  const applyFeatures = (row: Record<string, unknown>) => {
+    const key = `${row.entity_type as string}:${row.entity_id as string}`;
+    const feature = featureMap.get(key);
+    row.ai_confidence_score = getRuleConfidence(row, feature);
+    row.ai_feature_summary = feature?.summary || null;
+  };
+  stateRows.forEach(applyFeatures);
+  snapshotRows.forEach(applyFeatures);
+
+  const aiSlotIso = getAiSlotIso(nowIso);
+  const shouldRunAi = await acquireAiRunSlot(userId, aiSlotIso);
+  const totalEntities = stateRows.length;
+  let openAiAnalyzedCount = 0;
+  let openAiModelUsed: string | null = null;
+
+  // Do not overwrite telemetry status when slot is already processed.
+  // Otherwise UI can show "idle" right after a successful run in the same slot.
+  if (!shouldRunAi) {
+    await updateAiRunTelemetry(userId, {
+      last_slot_at: aiSlotIso,
+      last_total_entities: totalEntities,
+    });
+  }
+
+  if (shouldRunAi) {
+    await updateAiRunTelemetry(userId, {
+      last_ai_run_at: nowIso,
+      last_slot_at: aiSlotIso,
+      last_status: "running",
+      last_error: null,
+      last_total_entities: totalEntities,
+      last_openai_entities: 0,
+      last_model: "rule",
+    });
+
+    const openAiKey = await getUserOpenAiApiKey(userId);
+    if (openAiKey && stateRows.length > 0) {
+      try {
+        const candidateRows = stateRows
+          .filter((row) => {
+            const key = `${row.entity_type as string}:${row.entity_id as string}`;
+            return shouldAnalyzeWithOpenAi(row, previousStateMap.get(key), featureMap.get(key));
+          })
+          .sort((a, b) => Number(b.spend_usd || 0) - Number(a.spend_usd || 0))
+          .slice(0, 120);
+
+        const aiInputRows: AiRowInput[] = candidateRows.map((row) => ({
+          key: `${row.entity_type as string}:${row.entity_id as string}`,
+          entity_type: row.entity_type as string,
+          entity_id: row.entity_id as string,
+          spend_usd: Number(row.spend_usd || 0),
+          results_count: Number(row.results_count || 0),
+          cost_per_result_usd: row.cost_per_result_usd == null ? null : Number(row.cost_per_result_usd),
+          cpm: row.cpm == null ? null : Number(row.cpm),
+          ctr: row.ctr == null ? null : Number(row.ctr),
+          cpc_usd: row.cpc_usd == null ? null : Number(row.cpc_usd),
+          trend: row.trend as MonitoringTrend,
+          health: row.health as MonitoringHealth,
+          feature: featureMap.get(`${row.entity_type as string}:${row.entity_id as string}`) || null,
+        }));
+
+        const aiMap = aiInputRows.length > 0 ? await getOpenAiRecommendations(openAiKey, aiInputRows) : new Map();
+        openAiAnalyzedCount = aiInputRows.length;
+        openAiModelUsed = process.env.OPENAI_MODEL || "gpt-4o-mini";
+        const applyAi = (row: Record<string, unknown>) => {
+          const key = `${row.entity_type as string}:${row.entity_id as string}`;
+          const ai = aiMap.get(key);
+          if (!ai) return;
+          row.ai_recommendation = ai.recommendation;
+          row.ai_reason_short = normalizeAiReasonShort(ai.reason);
+          row.ai_confidence_score = ai.confidence;
+          row.ai_feature_summary =
+            featureMap.get(`${row.entity_type as string}:${row.entity_id as string}`)?.summary || null;
+          row.ai_analyzed_at = nowIso;
+          row.ai_model = openAiModelUsed;
+        };
+
+        stateRows.forEach(applyAi);
+        snapshotRows.forEach(applyAi);
+
+        await updateAiRunTelemetry(userId, {
+          last_ai_run_at: nowIso,
+          last_slot_at: aiSlotIso,
+          last_status: aiInputRows.length > 0 ? "completed" : "skipped",
+          last_error: aiInputRows.length > 0 ? null : "No candidates for OpenAI",
+          last_openai_entities: openAiAnalyzedCount,
+          last_total_entities: totalEntities,
+          last_model: aiInputRows.length > 0 ? openAiModelUsed : "rule",
+        });
+      } catch (aiError) {
+        console.error("[facebook-metrics] ai recommendations fallback to rules", {
+          userId,
+          message: aiError instanceof Error ? aiError.message : "unknown ai error",
+        });
+        await updateAiRunTelemetry(userId, {
+          last_ai_run_at: nowIso,
+          last_slot_at: aiSlotIso,
+          last_status: "error",
+          last_error: aiError instanceof Error ? aiError.message.slice(0, 240) : "Unknown OpenAI error",
+          last_openai_entities: openAiAnalyzedCount,
+          last_total_entities: totalEntities,
+          last_model: "rule",
+        });
+      }
+    } else {
+      await updateAiRunTelemetry(userId, {
+        last_ai_run_at: nowIso,
+        last_slot_at: aiSlotIso,
+        last_status: "skipped",
+        last_error: openAiKey ? "No entities to analyze" : "OpenAI key not configured",
+        last_openai_entities: 0,
+        last_total_entities: totalEntities,
+        last_model: "rule",
+      });
+    }
+  }
+
+  deriveAccountAiFromCampaigns(stateRows);
+  deriveAccountAiFromCampaigns(snapshotRows);
+  applyHierarchicalAiActions(stateRows);
+  applyHierarchicalAiActions(snapshotRows);
+
   if (snapshotRows.length > 0) {
     const { error: snapshotError } = await supabaseAdmin
       .from("facebook_performance_snapshots")
       .upsert(snapshotRows, { onConflict: "user_id,entity_type,entity_id,snapshot_time" });
     if (snapshotError) throw new Error(snapshotError.message);
   }
+  await applyPerformanceSnapshotRetention(userId, nowIso);
 
   const { error: stateDeleteError } = await supabaseAdmin
     .from("facebook_performance_state")
