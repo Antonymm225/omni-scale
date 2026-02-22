@@ -467,6 +467,7 @@ export default function PerformanceCategoryPage(props: Props) {
               onHover={setTooltip}
               tooltip={tooltip}
               xMode={rangeInfo.xMode}
+              timeZone={timezoneName}
               resultLabel={props.tooltipResultsLabel || props.resultTerm}
             />
             {tooltip ? (
@@ -570,12 +571,14 @@ function GenericLineChart({
   onHover,
   tooltip,
   xMode,
+  timeZone,
   resultLabel: _resultLabel,
 }: {
   series: SeriesPoint[];
   onHover: (tooltip: ChartTooltip | null) => void;
   tooltip: ChartTooltip | null;
   xMode: XMode;
+  timeZone: string;
   resultLabel: string;
 }) {
   const width = 980;
@@ -588,6 +591,18 @@ function GenericLineChart({
   const rightMax = Math.max(1, ...series.map((d) => Number(d.cost_per_result_usd || 0)));
   const horizontalGridSteps = 6;
 
+  const getHourMinuteInTimeZone = (iso: string) => {
+    const parts = new Intl.DateTimeFormat("en-GB", {
+      timeZone,
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(new Date(iso));
+    const hour = Number(parts.find((p) => p.type === "hour")?.value || "0");
+    const minute = Number(parts.find((p) => p.type === "minute")?.value || "0");
+    return { hour, minute };
+  };
+
   const points = useMemo(() => {
     const total = Math.max(series.length - 1, 1);
     const firstTime = series.length > 0 ? new Date(series[0].snapshot_time).getTime() : 0;
@@ -595,8 +610,11 @@ function GenericLineChart({
     const timeRange = Math.max(lastTime - firstTime, 1);
 
     return series.map((d, idx) => {
-      const xRatio =
-        xMode === "day" ? idx / total : (new Date(d.snapshot_time).getTime() - firstTime) / timeRange;
+      const xRatio = (() => {
+        if (xMode === "day") return idx / total;
+        const { hour, minute } = getHourMinuteInTimeZone(d.snapshot_time);
+        return (hour * 60 + minute) / (24 * 60);
+      })();
       const x = padding.left + xRatio * chartW;
 
       const spendY = padding.top + (1 - Number(d.spend_usd || 0) / leftMax) * chartH;
@@ -610,7 +628,11 @@ function GenericLineChart({
       const label =
         xMode === "day"
           ? date.toLocaleDateString("es-PE", { day: "2-digit", month: "2-digit" })
-          : date.toLocaleTimeString("es-PE", { hour: "2-digit", minute: "2-digit" });
+          : date.toLocaleTimeString("es-PE", {
+              hour: "2-digit",
+              minute: "2-digit",
+              timeZone,
+            });
 
       return {
         timestampMs: new Date(d.snapshot_time).getTime(),
@@ -624,13 +646,69 @@ function GenericLineChart({
         cpr: d.cost_per_result_usd == null ? null : Number(d.cost_per_result_usd),
       };
     });
-  }, [series, xMode, chartW, chartH, leftMax, rightMax]);
+  }, [series, xMode, chartW, chartH, leftMax, rightMax, timeZone]);
 
   const spendPath = points.length ? `M ${points.map((p) => `${p.x},${p.spendY}`).join(" L ")}` : "";
   const resultsPath = points.length ? `M ${points.map((p) => `${p.x},${p.resultsY}`).join(" L ")}` : "";
   const cprPath = points.filter((p) => p.cprY != null).length
     ? `M ${points.filter((p) => p.cprY != null).map((p) => `${p.x},${p.cprY}`).join(" L ")}`
     : "";
+
+  const endLabels = useMemo(() => {
+    if (points.length === 0) return [] as Array<{ key: string; text: string; color: string; x: number; y: number }>;
+    const last = points[points.length - 1];
+    const baseX = Math.min(last.x + 8, width - padding.right - 6);
+
+    const raw: Array<{ key: string; text: string; color: string; targetY: number }> = [
+      {
+        key: "spend",
+        text: last.spendUsd.toFixed(2),
+        color: "#1d4ed8",
+        targetY: last.spendY - 6,
+      },
+      {
+        key: "results",
+        text: String(last.results),
+        color: "#10b981",
+        targetY: last.resultsY - 6,
+      },
+    ];
+
+    if (last.cpr != null && last.cprY != null) {
+      raw.push({
+        key: "cpr",
+        text: last.cpr.toFixed(2),
+        color: "#7c3aed",
+        targetY: last.cprY - 6,
+      });
+    }
+
+    const minGap = 12;
+    const minY = padding.top + 10;
+    const maxY = height - padding.bottom - 8;
+    const sorted = [...raw].sort((a, b) => a.targetY - b.targetY);
+
+    let prevY = -Infinity;
+    const placed = sorted.map((item) => {
+      const y = Math.max(item.targetY, prevY + minGap, minY);
+      prevY = y;
+      return { ...item, y };
+    });
+
+    const overflow = placed.length > 0 ? placed[placed.length - 1].y - maxY : 0;
+    const shifted =
+      overflow > 0
+        ? placed.map((item) => ({ ...item, y: Math.max(minY, item.y - overflow) }))
+        : placed;
+
+    return shifted.map((item) => ({
+      key: item.key,
+      text: item.text,
+      color: item.color,
+      x: baseX,
+      y: item.y,
+    }));
+  }, [points, width, height, padding.top, padding.right, padding.bottom]);
 
   const setLineTooltipFromMouse = (metric: "spend" | "results" | "cpr", event: ReactMouseEvent<SVGPathElement>) => {
     const svg = event.currentTarget.ownerSVGElement;
@@ -666,31 +744,16 @@ function GenericLineChart({
       return points.map((point) => ({ x: point.x, label: point.label }));
     }
 
-    const firstMs = points[0].timestampMs;
-    const lastMs = points[points.length - 1].timestampMs;
-    const rangeMs = Math.max(lastMs - firstMs, 1);
     const ticksByHour: Array<{ x: number; label: string }> = [];
-
-    const startHour = new Date(firstMs);
-    startHour.setMinutes(0, 0, 0);
-    const endHour = new Date(lastMs);
-    endHour.setMinutes(0, 0, 0);
-
-    const cursor = new Date(startHour);
-    while (cursor.getTime() <= endHour.getTime()) {
-      const t = cursor.getTime();
-      const ratio = (t - firstMs) / rangeMs;
-      if (ratio >= 0 && ratio <= 1) {
-        ticksByHour.push({
-          x: padding.left + ratio * chartW,
-          label: `${cursor.getHours()}h`,
-        });
-      }
-      cursor.setHours(cursor.getHours() + 1);
+    for (let h = 0; h <= 23; h += 1) {
+      ticksByHour.push({
+        x: padding.left + (h / 24) * chartW,
+        label: `${h}h`,
+      });
     }
 
     if (ticksByHour.length === 0) {
-      return [{ x: points[0].x, label: `${new Date(firstMs).getHours()}h` }];
+      return [{ x: points[0].x, label: "0h" }];
     }
 
     return ticksByHour;
@@ -756,36 +819,11 @@ function GenericLineChart({
       {resultsPath ? <path d={resultsPath} fill="none" stroke="#10b981" strokeWidth="2.8" strokeLinecap="round" /> : null}
       {cprPath ? <path d={cprPath} fill="none" stroke="#7c3aed" strokeWidth="2.8" strokeLinecap="round" /> : null}
 
-      {points.length > 0 ? (
-        <>
-          <text
-            x={Math.min(points[points.length - 1].x + 6, width - padding.right - 6)}
-            y={points[points.length - 1].spendY - 6}
-            fontSize="10"
-            fill="#1d4ed8"
-          >
-            {points[points.length - 1].spendUsd.toFixed(2)}
-          </text>
-          <text
-            x={Math.min(points[points.length - 1].x + 6, width - padding.right - 6)}
-            y={points[points.length - 1].resultsY - 6}
-            fontSize="10"
-            fill="#10b981"
-          >
-            {points[points.length - 1].results}
-          </text>
-          {points[points.length - 1].cpr != null ? (
-            <text
-              x={Math.min(points[points.length - 1].x + 6, width - padding.right - 6)}
-              y={(points[points.length - 1].cprY || 0) - 6}
-              fontSize="10"
-              fill="#7c3aed"
-            >
-              {(points[points.length - 1].cpr || 0).toFixed(2)}
-            </text>
-          ) : null}
-        </>
-      ) : null}
+      {endLabels.map((label) => (
+        <text key={label.key} x={label.x} y={label.y} fontSize="10" fill={label.color}>
+          {label.text}
+        </text>
+      ))}
 
       {spendPath ? (
         <path
