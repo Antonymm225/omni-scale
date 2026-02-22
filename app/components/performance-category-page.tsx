@@ -76,6 +76,7 @@ type Props = {
   timeseriesResultField: string;
   onlyRunningAccounts?: boolean;
   tooltipResultsLabel?: string;
+  chartCurrencySymbol?: string;
 };
 
 const RANGE_OPTIONS: Array<{ key: RangeKey; label: string }> = [
@@ -469,6 +470,7 @@ export default function PerformanceCategoryPage(props: Props) {
               xMode={rangeInfo.xMode}
               timeZone={timezoneName}
               resultLabel={props.tooltipResultsLabel || props.resultTerm}
+              currencySymbol={props.chartCurrencySymbol || "$"}
             />
             {tooltip ? (
               <div
@@ -477,9 +479,16 @@ export default function PerformanceCategoryPage(props: Props) {
               >
                 <p className="px-4 font-semibold text-white">{tooltip.label}</p>
                 <div className="mt-1 space-y-1">
-                  <p className="px-4">Gasto: {formatUsd(tooltip.spendUsd)}</p>
+                  <p className="px-4">
+                    Gasto: {formatMoneyBySymbol(tooltip.spendUsd, props.chartCurrencySymbol || "$")}
+                  </p>
                   <p className="px-4">{props.tooltipResultsLabel || props.resultTerm}: {tooltip.results}</p>
-                  <p className="px-4">Costo: {tooltip.cpr != null ? formatUsd(tooltip.cpr) : "-"}</p>
+                  <p className="px-4">
+                    Costo:{" "}
+                    {tooltip.cpr != null
+                      ? formatMoneyBySymbol(tooltip.cpr, props.chartCurrencySymbol || "$")
+                      : "-"}
+                  </p>
                 </div>
               </div>
             ) : null}
@@ -572,7 +581,8 @@ function GenericLineChart({
   tooltip,
   xMode,
   timeZone,
-  resultLabel: _resultLabel,
+  resultLabel,
+  currencySymbol,
 }: {
   series: SeriesPoint[];
   onHover: (tooltip: ChartTooltip | null) => void;
@@ -580,6 +590,7 @@ function GenericLineChart({
   xMode: XMode;
   timeZone: string;
   resultLabel: string;
+  currencySymbol: string;
 }) {
   const width = 980;
   const height = 280;
@@ -662,13 +673,13 @@ function GenericLineChart({
     const raw: Array<{ key: string; text: string; color: string; targetY: number }> = [
       {
         key: "spend",
-        text: last.spendUsd.toFixed(2),
+        text: `Gasto: ${formatMoneyBySymbol(last.spendUsd, currencySymbol)}`,
         color: "#1d4ed8",
         targetY: last.spendY - 6,
       },
       {
         key: "results",
-        text: String(last.results),
+        text: `${resultLabel}: ${last.results}`,
         color: "#10b981",
         targetY: last.resultsY - 6,
       },
@@ -677,7 +688,7 @@ function GenericLineChart({
     if (last.cpr != null && last.cprY != null) {
       raw.push({
         key: "cpr",
-        text: last.cpr.toFixed(2),
+        text: `Costo: ${formatMoneyBySymbol(last.cpr, currencySymbol)}`,
         color: "#7c3aed",
         targetY: last.cprY - 6,
       });
@@ -708,7 +719,7 @@ function GenericLineChart({
       x: baseX,
       y: item.y,
     }));
-  }, [points, width, height, padding.top, padding.right, padding.bottom]);
+  }, [points, width, height, padding.top, padding.right, padding.bottom, currencySymbol, resultLabel]);
 
   const setLineTooltipFromMouse = (metric: "spend" | "results" | "cpr", event: ReactMouseEvent<SVGPathElement>) => {
     const svg = event.currentTarget.ownerSVGElement;
@@ -909,6 +920,14 @@ function formatLocalCurrency(amount: number, currency: string | null) {
 
 function formatUsd(amount: number) {
   return `$${Number(amount || 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function formatMoneyBySymbol(amount: number, symbol: string) {
+  const value = Number(amount || 0).toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  return symbol.trim() === "S/" ? `S/ ${value}` : `${symbol}${value}`;
 }
 
 function isAccountStatusActive(status: number | null) {
