@@ -93,6 +93,14 @@ export default function ConnectAssetsPage() {
             Conectar con Facebook
           </a>
 
+          <button
+            type="button"
+            onClick={() => router.push("/onboarding")}
+            className="mt-3 inline-flex w-full items-center justify-center rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+          >
+            Saltar por ahora
+          </button>
+
           <p className="mt-4 text-center text-xs text-slate-500">
             Solicitaremos permisos para leer y sincronizar los activos que administras.
           </p>

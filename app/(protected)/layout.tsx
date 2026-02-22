@@ -59,6 +59,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: "Assets",
     items: [
       { href: "/assets/facebook-conexion", label: "Facebook conexión", icon: <FacebookIcon /> },
+      { href: "/assets/mi-negocio", label: "Mi negocio", icon: <BusinessIcon /> },
       { href: "/assets/integraciones", label: "Integraciones", icon: <PlugIcon /> },
     ],
   },
@@ -213,6 +214,19 @@ function PlugIcon() {
         <path d="M5.2 2.2v3.1M8 2.2v3.1" />
         <path d="M3.8 5.3h5.6v1.2a2.8 2.8 0 0 1-2.8 2.8v3.5" />
         <path d="M5.4 12.8h2.4" />
+      </svg>
+    </MenuIconWrap>
+  );
+}
+
+function BusinessIcon() {
+  return (
+    <MenuIconWrap>
+      <svg viewBox="0 0 16 16" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M2.5 13.5h11" />
+        <path d="M3.5 13.5V6.2h9v7.3" />
+        <path d="M5.5 6.2V3.5h5v2.7" />
+        <path d="M6.2 8.5h1.2M8.6 8.5h1.2M6.2 10.6h1.2M8.6 10.6h1.2" />
       </svg>
     </MenuIconWrap>
   );

@@ -253,6 +253,20 @@ export default function Page() {
         </div>
 
         <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+          <p className="text-sm font-semibold text-[#111827]">Facturación y plan</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Revisa cobros, cambia de plan y gestiona tu membresía.
+          </p>
+          <button
+            type="button"
+            onClick={() => router.push("/mi-cuenta/facturacion")}
+            className="mt-3 inline-flex items-center justify-center rounded-lg bg-[#1D293D] px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
+          >
+            Ir a facturación
+          </button>
+        </div>
+
+        <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
           <p className="text-sm font-semibold text-[#111827]">Zona horaria para reporting</p>
           <p className="mt-1 text-xs text-slate-500">
             Define cómo se calcula Hoy/Ayer y el cierre diario de métricas.
