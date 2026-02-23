@@ -2478,6 +2478,11 @@ export async function syncUserPerformanceMonitoring(
         if (!entityId) continue;
 
         const spendOriginal = Number(insightRow.spend || 0);
+        // Keep monitoring focused on active delivery:
+        // campaign/adset/ad are stored only when they have spend > 0 today.
+        if (level !== "account" && spendOriginal <= 0) {
+          continue;
+        }
         const spendUsd = convertToUsd(spendOriginal, ad.currency, rates);
         const resultsCount = parseUnifiedResultCount(insightRow.actions);
         const clicks = Number(insightRow.clicks || 0);
