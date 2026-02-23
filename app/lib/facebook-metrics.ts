@@ -1877,11 +1877,10 @@ export async function syncUserLeadsMetrics(
   const rates = usdRates || (await fetchUsdRates());
   const rows = await getUserAdAccounts(userId);
   const reportingTimezone = await getUserReportingTimezone(userId);
-  let classifiedLeadAdsets = await getClassifiedAdsetsForUser(userId, "LEADS");
-  if (classifiedLeadAdsets.length === 0) {
-    await upsertAdsetClassificationsForUser(userId, token);
-    classifiedLeadAdsets = await getClassifiedAdsetsForUser(userId, "LEADS");
-  }
+  // Always refresh adset classification before computing Leads metrics.
+  // This avoids stale mappings when objective rules evolve (e.g. OUTCOME_LEADS).
+  await upsertAdsetClassificationsForUser(userId, token);
+  const classifiedLeadAdsets = await getClassifiedAdsetsForUser(userId, "LEADS");
 
   const leadAdsetsByAccount = new Map<string, Map<string, string | null>>();
   classifiedLeadAdsets.forEach((row) => {
