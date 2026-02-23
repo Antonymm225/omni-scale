@@ -78,6 +78,7 @@ type Props = {
   onlyRunningAccounts?: boolean;
   tooltipResultsLabel?: string;
   chartCurrencySymbol?: string;
+  syncPath?: string;
   children?: ReactNode;
 };
 
@@ -355,7 +356,7 @@ export default function PerformanceCategoryPage(props: Props) {
     setNotice(null);
 
     try {
-      const response = await fetch("/api/facebook/metrics/sync", { method: "POST" });
+      const response = await fetch(props.syncPath || "/api/facebook/metrics/sync", { method: "POST" });
       const payload = (await response.json().catch(() => ({}))) as {
         error?: string;
         ok?: boolean;

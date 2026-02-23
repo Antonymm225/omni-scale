@@ -18,6 +18,7 @@ export default function LeadsPage() {
       timeseriesTable="facebook_leads_timeseries"
       timeseriesResultField="leads_count"
       tooltipResultsLabel="Leads"
+      syncPath="/api/facebook/metrics/sync?scope=leads"
     >
       <LeadsEntitiesPanel />
     </PerformanceCategoryPage>

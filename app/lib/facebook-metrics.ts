@@ -1265,6 +1265,88 @@ async function getClassifiedAdsetsForUser(userId: string, performanceType: Perfo
   return (data || []) as ClassifiedAdsetRow[];
 }
 
+async function upsertAdsetClassificationsForUser(
+  userId: string,
+  token: string
+): Promise<void> {
+  const rows = await getUserAdAccounts(userId);
+  const reportingTimezone = await getUserReportingTimezone(userId);
+  const connectionId = await getUserConnectionId(userId);
+  const manualOverrides = await getManualOverrides(userId);
+  const nowIso = new Date().toISOString();
+
+  for (const ad of rows) {
+    const accountEdgeId = ad.facebook_ad_account_id.startsWith("act_")
+      ? ad.facebook_ad_account_id
+      : `act_${ad.account_id || ad.facebook_ad_account_id}`;
+
+    const adsets = await graphFetchPaginated<GraphAdset>(
+      `${GRAPH_BASE_URL}/${accountEdgeId}/adsets?fields=id,name,status,optimization_goal,billing_event,destination_type,promoted_object,campaign{id,name,objective}&limit=200&access_token=${encodeURIComponent(token)}`,
+      20
+    ).catch(() => []);
+
+    const adsetInsights = await graphFetchPaginated<GraphAdsetInsight>(
+      `${GRAPH_BASE_URL}/${accountEdgeId}/insights?fields=adset_id,spend,actions&level=adset&date_preset=today&limit=500&access_token=${encodeURIComponent(token)}`,
+      20
+    ).catch(() => []);
+
+    const adsetInsightMap = new Map<string, GraphAdsetInsight>();
+    adsetInsights.forEach((insightRow) => {
+      if (insightRow.adset_id) {
+        adsetInsightMap.set(insightRow.adset_id, insightRow);
+      }
+    });
+
+    for (const adset of adsets) {
+      const insightRow = adsetInsightMap.get(adset.id);
+      const manual = manualOverrides.get(adset.id);
+
+      let classification: ClassificationResult;
+      if (manual?.performance_type) {
+        classification = {
+          performanceType: manual.performance_type,
+          classificationSource: "manual",
+          confidenceScore: manual.confidence_score ?? 100,
+        };
+      } else {
+        classification = classifyAdset(
+          {
+            optimization_goal: adset.optimization_goal || null,
+            billing_event: adset.billing_event || null,
+            destination_type: adset.destination_type || null,
+            promoted_object: adset.promoted_object || null,
+            campaign_objective: adset.campaign?.objective || null,
+          },
+          { actions: insightRow?.actions }
+        );
+      }
+
+      const { error: adsetUpsertError } = await supabaseAdmin.from("facebook_adsets").upsert(
+        {
+          connection_id: connectionId,
+          user_id: userId,
+          facebook_ad_account_id: ad.facebook_ad_account_id,
+          facebook_adset_id: adset.id,
+          campaign_id: adset.campaign?.id || null,
+          campaign_name: adset.campaign?.name || null,
+          name: adset.name || null,
+          status: adset.status || null,
+          performance_type: classification.performanceType,
+          classification_source: classification.classificationSource,
+          confidence_score: classification.confidenceScore,
+          source_date: formatDateInTimezone(nowIso, reportingTimezone),
+          updated_at: nowIso,
+        },
+        { onConflict: "user_id,facebook_adset_id" }
+      );
+
+      if (adsetUpsertError) {
+        throw new Error(adsetUpsertError.message);
+      }
+    }
+  }
+}
+
 function getRoundedSnapshotTime(nowIso: string) {
   const roundedNow = new Date(nowIso);
   roundedNow.setUTCSeconds(0, 0);
@@ -1795,7 +1877,11 @@ export async function syncUserLeadsMetrics(
   const rates = usdRates || (await fetchUsdRates());
   const rows = await getUserAdAccounts(userId);
   const reportingTimezone = await getUserReportingTimezone(userId);
-  const classifiedLeadAdsets = await getClassifiedAdsetsForUser(userId, "LEADS");
+  let classifiedLeadAdsets = await getClassifiedAdsetsForUser(userId, "LEADS");
+  if (classifiedLeadAdsets.length === 0) {
+    await upsertAdsetClassificationsForUser(userId, token);
+    classifiedLeadAdsets = await getClassifiedAdsetsForUser(userId, "LEADS");
+  }
 
   const leadAdsetsByAccount = new Map<string, Map<string, string | null>>();
   classifiedLeadAdsets.forEach((row) => {

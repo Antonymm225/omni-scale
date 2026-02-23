@@ -37,6 +37,17 @@ const AWARENESS_OPTIMIZATION = new Set([
   "LANDING_PAGE_VIEWS",
 ]);
 
+const SALES_OBJECTIVES = ["OUTCOME_SALES", "SALES"];
+const LEADS_OBJECTIVES = ["OUTCOME_LEADS", "LEADS", "LEAD_GENERATION"];
+const AWARENESS_OBJECTIVES = [
+  "OUTCOME_AWARENESS",
+  "AWARENESS",
+  "OUTCOME_TRAFFIC",
+  "TRAFFIC",
+  "OUTCOME_ENGAGEMENT",
+  "ENGAGEMENT",
+];
+
 const MESSAGING_DESTINATIONS = [
   "WHATSAPP",
   "MESSENGER",
@@ -99,6 +110,7 @@ export function classifyAdset(
 ): ClassificationResult {
   const optimizationGoal = (adsetData.optimization_goal || "").toUpperCase();
   const destinationType = adsetData.destination_type || "";
+  const campaignObjective = (adsetData.campaign_objective || "").toUpperCase();
 
   // STEP 2: overrides by destination or promoted object
   if (includesAny(destinationType, MESSAGING_DESTINATIONS)) {
@@ -107,6 +119,17 @@ export function classifyAdset(
 
   if (hasLeadForm(adsetData.promoted_object || null)) {
     return { performanceType: "LEADS", classificationSource: "auto", confidenceScore: 95 };
+  }
+
+  // Campaign objective signal (important for ODAX objectives like OUTCOME_LEADS).
+  if (includesAny(campaignObjective, LEADS_OBJECTIVES)) {
+    return { performanceType: "LEADS", classificationSource: "auto", confidenceScore: 92 };
+  }
+  if (includesAny(campaignObjective, SALES_OBJECTIVES)) {
+    return { performanceType: "SALES", classificationSource: "auto", confidenceScore: 90 };
+  }
+  if (includesAny(campaignObjective, AWARENESS_OBJECTIVES)) {
+    return { performanceType: "AWARENESS", classificationSource: "auto", confidenceScore: 86 };
   }
 
   // STEP 3: performance validation from actions
