@@ -1,6 +1,7 @@
 "use client";
 
 import PerformanceCategoryPage from "../../../components/performance-category-page";
+import LeadsEntitiesPanel from "../../../components/leads-entities-panel";
 
 export default function LeadsPage() {
   return (
@@ -17,6 +18,8 @@ export default function LeadsPage() {
       timeseriesTable="facebook_leads_timeseries"
       timeseriesResultField="leads_count"
       tooltipResultsLabel="Leads"
-    />
+    >
+      <LeadsEntitiesPanel />
+    </PerformanceCategoryPage>
   );
 }

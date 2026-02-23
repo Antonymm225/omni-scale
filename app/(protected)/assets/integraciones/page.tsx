@@ -17,8 +17,10 @@ export default function IntegracionesPage() {
   const [savingEverflow, setSavingEverflow] = useState(false);
   const [savingOpenAi, setSavingOpenAi] = useState(false);
   const [savingWhatsapp, setSavingWhatsapp] = useState(false);
+  const [verifyingWhatsapp, setVerifyingWhatsapp] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [whatsappError, setWhatsappError] = useState<string | null>(null);
   const [userId, setUserId] = useState<string | null>(null);
 
   const [openAiKey, setOpenAiKey] = useState("");
@@ -26,6 +28,10 @@ export default function IntegracionesPage() {
   const [everflowRegion, setEverflowRegion] = useState<EverflowRegion>("US");
   const [everflowAccessType, setEverflowAccessType] = useState<EverflowAccessType>("Network");
   const [whatsappNumber, setWhatsappNumber] = useState("");
+  const [whatsappCode, setWhatsappCode] = useState("");
+  const [whatsappVerified, setWhatsappVerified] = useState(false);
+  const [whatsappHasPendingCode, setWhatsappHasPendingCode] = useState(false);
+  const [editingWhatsappNumber, setEditingWhatsappNumber] = useState(false);
   const [savedWhatsappNumber, setSavedWhatsappNumber] = useState("");
   const [savedFlags, setSavedFlags] = useState<SavedFlags>({
     everflowApiKey: false,
@@ -74,12 +80,29 @@ export default function IntegracionesPage() {
         ) {
           setEverflowAccessType(data.everflow_access_type);
         }
-        setWhatsappNumber(data.whatsapp_number || "");
-        setSavedWhatsappNumber(data.whatsapp_number || "");
+        const loadedWhatsapp = data.whatsapp_number || "";
+        setWhatsappNumber(loadedWhatsapp);
+        setSavedWhatsappNumber(loadedWhatsapp.replace(/\D/g, ""));
+        const { data: whatsappMeta, error: whatsappMetaError } = await supabase
+          .from("user_integrations")
+          .select("whatsapp_verified,whatsapp_verification_code,whatsapp_last_error")
+          .eq("user_id", user.id)
+          .maybeSingle();
+        let whatsappIsConnected = Boolean(loadedWhatsapp);
+        if (!whatsappMetaError) {
+          setWhatsappVerified(Boolean(whatsappMeta?.whatsapp_verified));
+          setWhatsappHasPendingCode(Boolean(whatsappMeta?.whatsapp_verification_code));
+          setWhatsappError((whatsappMeta?.whatsapp_last_error as string | null) || null);
+          whatsappIsConnected = Boolean(loadedWhatsapp) && Boolean(whatsappMeta?.whatsapp_verified);
+        } else {
+          setWhatsappVerified(Boolean(loadedWhatsapp));
+          setWhatsappHasPendingCode(false);
+          setWhatsappError(null);
+        }
         setSavedFlags({
           everflowApiKey: Boolean(data.everflow_api_key),
           openAiApiKey: Boolean(data.openai_api_key),
-          whatsapp: Boolean(data.whatsapp_number),
+          whatsapp: whatsappIsConnected,
         });
       }
 
@@ -141,30 +164,86 @@ export default function IntegracionesPage() {
     setSavingOpenAi(false);
   };
 
-  const saveWhatsapp = async () => {
+  const sendWhatsappCode = async () => {
     if (!userId) return;
     setSavingWhatsapp(true);
     setError(null);
     setNotice(null);
+    setWhatsappError(null);
 
     const clean = whatsappNumber.trim();
-    const { error: upsertError } = await supabase
-      .from("user_integrations")
-      .upsert({ user_id: userId, whatsapp_number: clean });
-
-    if (upsertError) {
-      setError(upsertError.message);
+    if (!clean) {
+      setWhatsappError("Ingresa un numero de WhatsApp.");
       setSavingWhatsapp(false);
       return;
     }
 
-    setSavedWhatsappNumber(clean);
-    setSavedFlags((prev) => ({ ...prev, whatsapp: Boolean(clean) }));
-    setNotice("Numero de WhatsApp guardado.");
+    const response = await fetch("/api/integrations/whatsapp/send-code", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ number: clean }),
+    });
+    const payload = (await response.json().catch(() => ({}))) as { success?: boolean; error?: string };
+    if (!response.ok || !payload.success) {
+      setWhatsappError(payload.error || "No se pudo enviar mensaje de verificacion.");
+      setSavingWhatsapp(false);
+      return;
+    }
+
+    setWhatsappVerified(false);
+    setWhatsappHasPendingCode(true);
+    setSavedWhatsappNumber(clean.replace(/\D/g, ""));
+    setSavedFlags((prev) => ({ ...prev, whatsapp: false }));
+    setNotice("Te enviamos un codigo por WhatsApp. Ingresalo para verificar.");
     setSavingWhatsapp(false);
   };
 
-  const whatsappSaved = savedFlags.whatsapp && whatsappNumber.trim() === savedWhatsappNumber && savedWhatsappNumber !== "";
+  const verifyWhatsappCode = async () => {
+    if (!userId) return;
+    setVerifyingWhatsapp(true);
+    setError(null);
+    setNotice(null);
+    setWhatsappError(null);
+
+    const clean = whatsappNumber.trim();
+    const code = whatsappCode.trim().toUpperCase();
+    if (!clean || code.length !== 4) {
+      setWhatsappError("Ingresa el codigo de 4 caracteres.");
+      setVerifyingWhatsapp(false);
+      return;
+    }
+
+    const response = await fetch("/api/integrations/whatsapp/verify-code", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ number: clean, code }),
+    });
+    const payload = (await response.json().catch(() => ({}))) as { success?: boolean; error?: string };
+    if (!response.ok || !payload.success) {
+      setWhatsappError(payload.error || "No se pudo verificar el codigo.");
+      setVerifyingWhatsapp(false);
+      return;
+    }
+
+    const normalized = clean.replace(/\D/g, "");
+    setWhatsappCode("");
+    setWhatsappVerified(true);
+    setWhatsappHasPendingCode(false);
+    setEditingWhatsappNumber(false);
+    setSavedWhatsappNumber(normalized);
+    setSavedFlags((prev) => ({ ...prev, whatsapp: true }));
+    setNotice("WhatsApp conectado.");
+    setVerifyingWhatsapp(false);
+  };
+
+  const normalizedCurrentWhatsapp = whatsappNumber.replace(/\D/g, "");
+  const whatsappSaved =
+    savedFlags.whatsapp &&
+    normalizedCurrentWhatsapp === savedWhatsappNumber &&
+    savedWhatsappNumber !== "" &&
+    whatsappVerified;
+  const showWhatsappVerificationFlow = !whatsappSaved || editingWhatsappNumber;
+  const whatsappCanSend = whatsappSaved && !whatsappError;
 
   return (
     <main className="px-4 py-8 sm:px-6 lg:px-10">
@@ -305,25 +384,90 @@ export default function IntegracionesPage() {
                   <input
                     type="tel"
                     value={whatsappNumber}
-                    onChange={(event) => setWhatsappNumber(event.target.value)}
+                    onChange={(event) => {
+                      setWhatsappNumber(event.target.value);
+                      setWhatsappVerified(false);
+                    }}
+                    disabled={!showWhatsappVerificationFlow}
                     placeholder="+51 999 999 999"
-                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 pr-10 text-sm text-slate-800 outline-none ring-0 focus:border-[#1D293D]"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 pr-10 text-sm text-slate-800 outline-none ring-0 focus:border-[#1D293D] disabled:cursor-not-allowed disabled:bg-slate-50"
                   />
                   <span className="pointer-events-none absolute inset-y-0 right-3 inline-flex items-center">
                     <FieldStatusIcon saved={whatsappSaved} />
                   </span>
                 </div>
               </label>
+              {whatsappError ? (
+                <p className="mt-2 text-xs text-red-600">{whatsappError}</p>
+              ) : whatsappSaved ? (
+                <p className="mt-2 text-xs text-emerald-600">WhatsApp conectado.</p>
+              ) : whatsappHasPendingCode ? (
+                <p className="mt-2 text-xs text-amber-600">Codigo enviado. Verifica para guardar.</p>
+              ) : (
+                <p className="mt-2 text-xs text-slate-500">Aun no verificado.</p>
+              )}
+              <p
+                className={`mt-1 text-xs font-medium ${
+                  whatsappCanSend ? "text-emerald-600" : "text-amber-600"
+                }`}
+              >
+                Estado de conexion: {whatsappCanSend ? "Enviando mensajes" : "No se puede enviar mensajes"}
+              </p>
+
+              {showWhatsappVerificationFlow ? (
+                <label className="mt-3 block">
+                  <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+                    Codigo de verificacion
+                  </span>
+                  <input
+                    type="text"
+                    maxLength={4}
+                    value={whatsappCode}
+                    onChange={(event) => setWhatsappCode(event.target.value.toUpperCase())}
+                    placeholder="AB12"
+                    className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm uppercase tracking-[0.2em] text-slate-800 outline-none ring-0 focus:border-[#1D293D]"
+                  />
+                </label>
+              ) : null}
             </div>
 
-            <button
-              type="button"
-              onClick={saveWhatsapp}
-              disabled={loading || savingWhatsapp}
-              className="mt-4 inline-flex items-center justify-center rounded-lg bg-[#1D293D] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {savingWhatsapp ? "Guardando..." : "Guardar WhatsApp"}
-            </button>
+            {showWhatsappVerificationFlow ? (
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={sendWhatsappCode}
+                  disabled={loading || savingWhatsapp}
+                  className="inline-flex items-center justify-center rounded-lg bg-[#1D293D] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {savingWhatsapp ? "Enviando..." : whatsappHasPendingCode ? "Reenviar codigo" : "Enviar codigo"}
+                </button>
+                <button
+                  type="button"
+                  onClick={verifyWhatsappCode}
+                  disabled={loading || verifyingWhatsapp}
+                  className="inline-flex items-center justify-center rounded-lg border border-[#1D293D] bg-white px-4 py-2 text-sm font-semibold text-[#1D293D] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {verifyingWhatsapp ? "Verificando..." : "Verificar numero"}
+                </button>
+              </div>
+            ) : (
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingWhatsappNumber(true);
+                    setWhatsappVerified(false);
+                    setWhatsappHasPendingCode(false);
+                    setWhatsappCode("");
+                    setWhatsappError(null);
+                    setSavedFlags((prev) => ({ ...prev, whatsapp: false }));
+                  }}
+                  className="inline-flex items-center justify-center rounded-lg border border-[#1D293D] bg-white px-4 py-2 text-sm font-semibold text-[#1D293D] hover:bg-slate-50"
+                >
+                  Cambiar numero
+                </button>
+              </div>
+            )}
           </article>
         </section>
       </div>
@@ -358,4 +502,3 @@ function FieldStatusIcon({ saved }: { saved: boolean }) {
     </svg>
   );
 }
-

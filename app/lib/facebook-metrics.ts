@@ -6,6 +6,7 @@ import {
   type PerformanceType,
 } from "./adset-classification";
 import { createOpenAiClient, extractJsonObject } from "./openai-client";
+import { sendWhatsappText } from "./whatsapp";
 
 type GraphPagingResponse<T> = {
   data?: T[];
@@ -702,6 +703,266 @@ async function getUserOpenAiApiKey(userId: string) {
   if (error) throw new Error(error.message);
   const key = (data?.openai_api_key as string | null) || null;
   return key && key.trim() ? key.trim() : null;
+}
+
+type WhatsappIntegrationConfig = {
+  whatsapp_number: string | null;
+  whatsapp_verified: boolean | null;
+};
+
+async function getUserWhatsappIntegration(userId: string): Promise<WhatsappIntegrationConfig> {
+  const { data, error } = await supabaseAdmin
+    .from("user_integrations")
+    .select("whatsapp_number,whatsapp_verified")
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return {
+    whatsapp_number: (data?.whatsapp_number as string | null) || null,
+    whatsapp_verified: (data?.whatsapp_verified as boolean | null) || false,
+  };
+}
+
+async function getUserLeadsCplTarget(userId: string): Promise<number | null> {
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("leads_cpl_target_usd")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  const raw = data?.leads_cpl_target_usd as number | null | undefined;
+  if (raw == null) return null;
+  const value = Number(raw);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+
+type LeadsAlertSeverity = "good" | "bad";
+
+type LeadsAlertCandidate = {
+  user_id: string;
+  source_date: string;
+  entity_type: string;
+  entity_id: string;
+  entity_name: string;
+  account_name: string | null;
+  severity: LeadsAlertSeverity;
+  recommendation: AiRecommendation;
+  ai_action: AiAction;
+  reason: string;
+  spend_usd: number;
+  results_count: number;
+  cpr_usd: number | null;
+  cpl_target_usd: number | null;
+};
+
+function formatUsdCompact(value: number | null) {
+  if (value == null) return "-";
+  return `$${value.toLocaleString("en-US", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+}
+
+function mapEntityTypeEs(entityType: string) {
+  if (entityType === "campaign") return "Campana";
+  if (entityType === "adset") return "Adset";
+  if (entityType === "ad") return "Ad";
+  return "Entidad";
+}
+
+function getActionSuggestion(action: AiAction, severity: LeadsAlertSeverity) {
+  if (action === "pause_ad") return "Pausar este ad y revisar creativos.";
+  if (action === "pause_adset") return "Pausar este adset y depurar ads.";
+  if (action === "pause_campaign") return "Pausar esta campana y revisar estructura.";
+  if (action === "pause_account") return "Revisar toda la cuenta antes de escalar.";
+  if (action === "scale_up") return "Escalar gradualmente presupuesto.";
+  return severity === "bad" ? "Revisar costo y considerar pausar." : "Mantener y evaluar escalado.";
+}
+
+function getUrgencyLevel(item: LeadsAlertCandidate): "Alta" | "Media" | "Baja" {
+  if (item.severity === "bad") {
+    if (item.cpr_usd != null && item.cpl_target_usd != null && item.cpr_usd >= item.cpl_target_usd * 1.4) {
+      return "Alta";
+    }
+    if (item.recommendation === "worsening") return "Alta";
+    return "Media";
+  }
+
+  if (item.recommendation === "scale" && item.results_count >= 8) return "Alta";
+  if (item.results_count >= 4) return "Media";
+  return "Baja";
+}
+
+function buildWhatsappLeadsAlertMessage(item: LeadsAlertCandidate) {
+  const title = item.severity === "bad" ? "🚨 *ALERTA LEADS*" : "✅ *LEADS DESTACADO*";
+  const cplTargetText = item.cpl_target_usd != null ? formatUsdCompact(item.cpl_target_usd) : "No definido";
+  const action = getActionSuggestion(item.ai_action, item.severity);
+  const account = item.account_name || "Sin nombre";
+  const urgency = getUrgencyLevel(item);
+
+  return [
+    `🤖 *OMNI Scale AI*`,
+    title,
+    `*Urgencia:* ${urgency}`,
+    `*Cuenta:* ${account}`,
+    `*${mapEntityTypeEs(item.entity_type)}:* ${item.entity_name}`,
+    `*ID:* ${item.entity_id}`,
+    `*Gasto:* ${formatUsdCompact(item.spend_usd)} | *Leads:* ${item.results_count}`,
+    `*CPL:* ${formatUsdCompact(item.cpr_usd)} | *Objetivo:* ${cplTargetText}`,
+    `*Analisis IA:* ${item.reason}`,
+    `👉 *Recomendacion:* ${action}`,
+  ].join("\n");
+}
+
+async function getLeadsEntitySets(userId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("facebook_adsets")
+    .select("facebook_adset_id,campaign_id,facebook_ad_account_id")
+    .eq("user_id", userId)
+    .eq("performance_type", "LEADS");
+  if (error) throw new Error(error.message);
+
+  const adsetIds = new Set<string>();
+  const campaignIds = new Set<string>();
+  const accountIds = new Set<string>();
+
+  (data || []).forEach((row) => {
+    const adsetId = row.facebook_adset_id as string | null;
+    const campaignId = row.campaign_id as string | null;
+    const accountId = row.facebook_ad_account_id as string | null;
+    if (adsetId) adsetIds.add(adsetId);
+    if (campaignId) campaignIds.add(campaignId);
+    if (accountId) accountIds.add(accountId);
+  });
+
+  return { adsetIds, campaignIds, accountIds };
+}
+
+function isLeadsEntityRow(
+  row: Record<string, unknown>,
+  sets: { adsetIds: Set<string>; campaignIds: Set<string>; accountIds: Set<string> }
+) {
+  const entityType = String(row.entity_type || "");
+  const entityId = String(row.entity_id || "");
+  if (entityType === "campaign") return sets.campaignIds.has(entityId);
+  if (entityType === "adset") return sets.adsetIds.has(entityId);
+  if (entityType === "ad") {
+    const adsetId = (row.adset_id as string | null) || "";
+    return !!adsetId && sets.adsetIds.has(adsetId);
+  }
+  if (entityType === "account") {
+    const accountId = (row.facebook_ad_account_id as string | null) || "";
+    return !!accountId && sets.accountIds.has(accountId);
+  }
+  return false;
+}
+
+function getLeadsAlertCandidate(
+  row: Record<string, unknown>,
+  cplTarget: number | null,
+  sourceDate: string,
+  userId: string
+): LeadsAlertCandidate | null {
+  const entityType = String(row.entity_type || "");
+  if (entityType !== "campaign" && entityType !== "adset" && entityType !== "ad") return null;
+
+  const spendUsd = Number(row.spend_usd || 0);
+  const resultsCount = Number(row.results_count || 0);
+  const cprUsd = row.cost_per_result_usd == null ? null : Number(row.cost_per_result_usd);
+  const recommendation = ((row.ai_recommendation as AiRecommendation | null) || "stable") as AiRecommendation;
+  const reason = (row.ai_reason_short as string | null) || "Analisis AI";
+
+  let severity: LeadsAlertSeverity | null = null;
+
+  if (recommendation === "worsening") {
+    severity = "bad";
+  } else if (recommendation === "scale") {
+    severity = "good";
+  }
+
+  if (cplTarget != null && cprUsd != null) {
+    if (cprUsd > cplTarget * 1.2 && spendUsd >= Math.max(10, cplTarget * 2)) {
+      severity = "bad";
+    }
+    if (cprUsd <= cplTarget * 0.8 && resultsCount >= 3 && spendUsd >= Math.max(10, cplTarget)) {
+      severity = "good";
+    }
+  }
+
+  if (severity == null) return null;
+
+  return {
+    user_id: userId,
+    source_date: sourceDate,
+    entity_type: entityType,
+    entity_id: String(row.entity_id || ""),
+    entity_name: String(row.entity_name || "Sin nombre"),
+    account_name: (row.account_name as string | null) || null,
+    severity,
+    recommendation,
+    ai_action: ((row.ai_action as AiAction | null) || "none") as AiAction,
+    reason,
+    spend_usd: spendUsd,
+    results_count: resultsCount,
+    cpr_usd: cprUsd,
+    cpl_target_usd: cplTarget,
+  };
+}
+
+async function sendLeadsWhatsappAlerts(params: {
+  userId: string;
+  sourceDate: string;
+  stateRows: Array<Record<string, unknown>>;
+}) {
+  const integration = await getUserWhatsappIntegration(params.userId);
+  if (!integration.whatsapp_verified || !integration.whatsapp_number) return;
+
+  const leadsSets = await getLeadsEntitySets(params.userId);
+  const cplTarget = await getUserLeadsCplTarget(params.userId);
+
+  const candidates = params.stateRows
+    .filter((row) => isLeadsEntityRow(row, leadsSets))
+    .map((row) => getLeadsAlertCandidate(row, cplTarget, params.sourceDate, params.userId))
+    .filter((item): item is LeadsAlertCandidate => Boolean(item))
+    .sort((a, b) => {
+      if (a.severity !== b.severity) return a.severity === "bad" ? -1 : 1;
+      return b.spend_usd - a.spend_usd;
+    });
+
+  if (candidates.length === 0) return;
+  const pending = candidates;
+
+  for (const item of pending) {
+    const message = buildWhatsappLeadsAlertMessage(item);
+    try {
+      await sendWhatsappText({
+        number: integration.whatsapp_number,
+        message,
+      });
+
+      const { error: insertError } = await supabaseAdmin.from("user_whatsapp_alert_events").insert({
+        user_id: item.user_id,
+        source_date: item.source_date,
+        entity_type: item.entity_type,
+        entity_id: item.entity_id,
+        severity: item.severity,
+        recommendation: item.recommendation,
+        message,
+      });
+      if (insertError) {
+        console.error("[facebook-metrics] whatsapp alert insert failed", {
+          userId: params.userId,
+          message: insertError.message,
+        });
+      }
+    } catch (error) {
+      const messageError = error instanceof Error ? error.message : "unknown whatsapp error";
+      await supabaseAdmin
+        .from("user_integrations")
+        .update({ whatsapp_last_error: messageError.slice(0, 240) })
+        .eq("user_id", params.userId);
+    }
+  }
 }
 
 type AiRowInput = {
@@ -2348,6 +2609,19 @@ export async function syncUserPerformanceMonitoring(
   deriveAccountAiFromCampaigns(snapshotRows);
   applyHierarchicalAiActions(stateRows);
   applyHierarchicalAiActions(snapshotRows);
+
+  try {
+    await sendLeadsWhatsappAlerts({
+      userId,
+      sourceDate,
+      stateRows,
+    });
+  } catch (alertError) {
+    console.error("[facebook-metrics] whatsapp leads alerts failed", {
+      userId,
+      message: alertError instanceof Error ? alertError.message : "unknown",
+    });
+  }
 
   if (snapshotRows.length > 0) {
     const { error: snapshotError } = await supabaseAdmin

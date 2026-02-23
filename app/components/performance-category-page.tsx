@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { supabase } from "../lib/supabaseClient";
+import type { ReactNode } from "react";
 
 type RangeKey = "today" | "yesterday" | "3d" | "7d";
 type XMode = "hour" | "day";
@@ -77,6 +78,7 @@ type Props = {
   onlyRunningAccounts?: boolean;
   tooltipResultsLabel?: string;
   chartCurrencySymbol?: string;
+  children?: ReactNode;
 };
 
 const RANGE_OPTIONS: Array<{ key: RangeKey; label: string }> = [
@@ -561,6 +563,8 @@ export default function PerformanceCategoryPage(props: Props) {
             </table>
           </div>
         </section>
+
+        {props.children}
       </div>
     </main>
   );
