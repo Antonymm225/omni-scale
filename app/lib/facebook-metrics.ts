@@ -1270,7 +1270,6 @@ async function upsertAdsetClassificationsForUser(
   token: string
 ): Promise<void> {
   const rows = await getUserAdAccounts(userId);
-  const reportingTimezone = await getUserReportingTimezone(userId);
   const connectionId = await getUserConnectionId(userId);
   const manualOverrides = await getManualOverrides(userId);
   const nowIso = new Date().toISOString();
@@ -1334,7 +1333,6 @@ async function upsertAdsetClassificationsForUser(
           performance_type: classification.performanceType,
           classification_source: classification.classificationSource,
           confidence_score: classification.confidenceScore,
-          source_date: formatDateInTimezone(nowIso, reportingTimezone),
           updated_at: nowIso,
         },
         { onConflict: "user_id,facebook_adset_id" }
