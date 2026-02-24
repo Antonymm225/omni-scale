@@ -5,10 +5,33 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
 
+const TIMEZONE_OPTIONS = [
+  "America/New_York",
+  "America/Chicago",
+  "America/Denver",
+  "America/Los_Angeles",
+  "America/Lima",
+  "America/Mexico_City",
+  "America/Bogota",
+  "America/Santiago",
+  "Europe/Madrid",
+  "UTC",
+];
+
+function detectTimezone() {
+  try {
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    return tz && tz.trim() ? tz : "America/New_York";
+  } catch {
+    return "America/New_York";
+  }
+}
+
 export default function BusinessTypePage() {
   const router = useRouter();
   const [companyName, setCompanyName] = useState("");
   const [businessType, setBusinessType] = useState("");
+  const [timezoneName, setTimezoneName] = useState(detectTimezone);
   const [errorMessage, setErrorMessage] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
@@ -58,6 +81,29 @@ export default function BusinessTypePage() {
 
       if (insertError) {
         setErrorMessage(insertError.message);
+        setIsSaving(false);
+        return;
+      }
+    }
+
+    const { data: profileUpdated, error: profileUpdateError } = await supabase
+      .from("profiles")
+      .update({ timezone_name: timezoneName })
+      .eq("id", user.id)
+      .select("id");
+
+    if (profileUpdateError) {
+      setErrorMessage(profileUpdateError.message);
+      setIsSaving(false);
+      return;
+    }
+
+    if (!profileUpdated || profileUpdated.length === 0) {
+      const { error: profileInsertError } = await supabase
+        .from("profiles")
+        .upsert({ id: user.id, timezone_name: timezoneName }, { onConflict: "id" });
+      if (profileInsertError) {
+        setErrorMessage(profileInsertError.message);
         setIsSaving(false);
         return;
       }
@@ -130,6 +176,31 @@ export default function BusinessTypePage() {
                 required
                 className="w-full rounded-xl border border-slate-300 px-4 py-3 text-sm text-slate-900 outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
               />
+            </div>
+
+            <div>
+              <label
+                htmlFor="timezone_name"
+                className="mb-2 block text-sm font-medium text-slate-700"
+              >
+                Zona horaria
+              </label>
+              <select
+                id="timezone_name"
+                value={timezoneName}
+                onChange={(e) => setTimezoneName(e.target.value)}
+                required
+                className="w-full appearance-none rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm text-[#1D293D] outline-none transition focus:border-slate-900 focus:ring-2 focus:ring-slate-200"
+              >
+                {!TIMEZONE_OPTIONS.includes(timezoneName) ? (
+                  <option value={timezoneName}>{timezoneName}</option>
+                ) : null}
+                {TIMEZONE_OPTIONS.map((timezoneOption) => (
+                  <option key={timezoneOption} value={timezoneOption}>
+                    {timezoneOption}
+                  </option>
+                ))}
+              </select>
             </div>
 
             <div>
