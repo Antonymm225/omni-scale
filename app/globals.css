@@ -6,6 +6,10 @@
   --surface: #ffffff;
   --surface-soft: #f8fafc;
   --border: #e2e8f0;
+  --brand-bg: #f3f5f9;
+  --brand-text-strong: #111827;
+  --brand-text: #1d293d;
+  --brand-muted: #475569;
 }
 
 @theme inline {
@@ -16,11 +20,15 @@
 }
 
 :root[data-theme="dark"] {
-  --background: #0b1220;
-  --foreground: #e5e7eb;
-  --surface: #111827;
-  --surface-soft: #1f2937;
-  --border: #334155;
+  --background: #0e1521;
+  --foreground: #edf2fb;
+  --surface: #151c28;
+  --surface-soft: #1d2635;
+  --border: #334357;
+  --brand-bg: #0e1521;
+  --brand-text-strong: #f8fafc;
+  --brand-text: #dde6f3;
+  --brand-muted: #a3afc2;
 }
 
 :root[data-theme="light"] {
@@ -29,12 +37,33 @@
   --surface: #ffffff;
   --surface-soft: #f8fafc;
   --border: #e2e8f0;
+  --brand-bg: #f3f5f9;
+  --brand-text-strong: #111827;
+  --brand-text: #1d293d;
+  --brand-muted: #475569;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  transition: background-color 160ms ease, color 160ms ease;
+}
+
+:root[data-theme="dark"] body {
+  background:
+    radial-gradient(1200px 500px at 85% -10%, rgba(65, 84, 141, 0.22), transparent 55%),
+    radial-gradient(900px 420px at 10% -20%, rgba(72, 46, 131, 0.15), transparent 52%),
+    var(--background);
+}
+
+.theme-dark .bg-\[\#f3f5f9\],
+.theme-dark .bg-\[\#f8fafc\] {
+  background-color: var(--brand-bg) !important;
+}
+
+.theme-dark .bg-\[\#1D293D\] {
+  background-color: #2a3650 !important;
 }
 
 .theme-dark .bg-white {
@@ -46,29 +75,109 @@ body {
   background-color: var(--surface-soft) !important;
 }
 
+.theme-dark .bg-white.border,
+.theme-dark .bg-white.border-slate-200 {
+  background-image: linear-gradient(180deg, rgba(255, 255, 255, 0.025), rgba(255, 255, 255, 0));
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 12px 22px rgba(2, 6, 23, 0.32),
+    0 30px 56px rgba(2, 6, 23, 0.48),
+    0 0 0 1px rgba(86, 108, 142, 0.3) !important;
+}
+
 .theme-dark .border-slate-100,
 .theme-dark .border-slate-200,
 .theme-dark .border-slate-300 {
   border-color: var(--border) !important;
 }
 
+.theme-dark .shadow-sm {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 18px 34px rgba(2, 6, 23, 0.42) !important;
+}
+
 .theme-dark .text-slate-400,
 .theme-dark .text-slate-500,
 .theme-dark .text-slate-600,
 .theme-dark .text-slate-700 {
-  color: #cbd5e1 !important;
+  color: var(--brand-muted) !important;
 }
 
 .theme-dark .text-\[\#111827\],
-.theme-dark .text-\[\#1D293D\] {
-  color: #f3f4f6 !important;
+.theme-dark .text-\[\#1D293D\],
+.theme-dark .text-\[\#0f172a\] {
+  color: var(--brand-text-strong) !important;
+}
+
+.theme-dark .omni-tooltip-dark,
+.theme-dark .omni-tooltip-dark p,
+.theme-dark .omni-tooltip-dark span {
+  color: #0f172a !important;
+}
+
+.theme-dark .text-slate-900,
+.theme-dark .text-slate-800 {
+  color: var(--brand-text-strong) !important;
+}
+
+.theme-dark .text-slate-300,
+.theme-dark .text-slate-200,
+.theme-dark .text-slate-100 {
+  color: #eef3ff !important;
+}
+
+.theme-dark .text-slate-950 {
+  color: #ffffff !important;
+}
+
+.theme-dark .bg-violet-100 {
+  background-color: #2f2a4a !important;
+}
+
+.theme-dark .text-violet-700 {
+  color: #c4b5fd !important;
+}
+
+.theme-dark .bg-violet-600 {
+  background-color: #635bff !important;
+}
+
+.theme-dark .hover\:bg-violet-700:hover {
+  background-color: #5750e8 !important;
+}
+
+.theme-dark .hover\:bg-slate-50:hover,
+.theme-dark .hover\:bg-slate-100:hover {
+  background-color: #2b3444 !important;
+}
+
+.theme-dark .from-\[\#161820\] {
+  --tw-gradient-from: #1b2230 var(--tw-gradient-from-position) !important;
+  --tw-gradient-to: rgb(27 34 48 / 0) var(--tw-gradient-to-position) !important;
+}
+
+.theme-dark .to-\[\#2a2b1e\] {
+  --tw-gradient-to: #2b3040 var(--tw-gradient-to-position) !important;
+}
+
+.theme-dark .menu-scroll.is-scrollbar-visible {
+  scrollbar-color: #5f6b80 transparent;
+}
+
+.theme-dark .menu-scroll.is-scrollbar-visible::-webkit-scrollbar-thumb {
+  background: #5f6b80;
+}
+
+.theme-dark svg text {
+  fill: #a8b4c8;
 }
 
 .theme-dark input,
 .theme-dark select,
 .theme-dark textarea {
-  background-color: #0f172a !important;
-  color: #e5e7eb !important;
+  background-color: #0a1730 !important;
+  color: #e6eefb !important;
   border-color: var(--border) !important;
 }
 

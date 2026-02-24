@@ -311,11 +311,12 @@ export default function ProtectedLayout({
   children: React.ReactNode;
 }) {
   const { locale, setLocale } = useLocale();
-  const { theme, setTheme } = useTheme();
+  const { theme } = useTheme();
   const router = useRouter();
   const pathname = usePathname();
   const [loading, setLoading] = useState(true);
   const [showMenuScrollbar, setShowMenuScrollbar] = useState(false);
+  const [userId, setUserId] = useState<string | null>(null);
   const [profile, setProfile] = useState<SidebarProfile>({
     name: locale === "en" ? "User" : "Usuario",
     email: "",
@@ -359,9 +360,6 @@ export default function ProtectedLayout({
 
       if (existingLocale === "es" || existingLocale === "en") {
         setLocale(existingLocale);
-      }
-      if (existingTheme === "dark" || existingTheme === "light") {
-        setTheme(existingTheme);
       }
 
       const hasTimezone = Boolean(existingTimezone.trim());
@@ -414,6 +412,7 @@ export default function ProtectedLayout({
       }
 
       const user = data.session.user;
+      setUserId(user.id);
       setProfile(mapUserProfile(user));
       await ensureUserPreferences({
         id: user.id,
@@ -428,13 +427,22 @@ export default function ProtectedLayout({
 
     const { data: authSubscription } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!session?.user) return;
+      setUserId(session.user.id);
       setProfile(mapUserProfile(session.user));
     });
 
     return () => {
       authSubscription.subscription.unsubscribe();
     };
-  }, [router, locale, setLocale, theme, setTheme]);
+  }, [router]);
+
+  useEffect(() => {
+    if (!userId) return;
+    void supabase
+      .from("profiles")
+      .update({ theme_mode: theme, language_code: locale })
+      .eq("id", userId);
+  }, [userId, theme, locale]);
 
   if (loading) {
     return (

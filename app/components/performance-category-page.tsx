@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from
 import { supabase } from "../lib/supabaseClient";
 import type { ReactNode } from "react";
 import { useLocale } from "../providers/LocaleProvider";
+import { useTheme } from "../providers/ThemeProvider";
 
 type RangeKey = "today" | "yesterday" | "3d" | "7d";
 type XMode = "hour" | "day";
@@ -150,7 +151,12 @@ function buildRange(range: RangeKey, timeZone: string) {
 
 export default function PerformanceCategoryPage(props: Props) {
   const { locale } = useLocale();
+  const { theme } = useTheme();
   const isEn = locale === "en";
+  const chartColors =
+    theme === "dark"
+      ? { spend: "#60a5fa", results: "#22d3ee", cpr: "#fbbf24" }
+      : { spend: "#1d4ed8", results: "#10b981", cpr: "#7c3aed" };
   const [range, setRange] = useState<RangeKey>("today");
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -494,10 +500,16 @@ export default function PerformanceCategoryPage(props: Props) {
             />
             {tooltip ? (
               <div
-                className="pointer-events-none absolute z-20 w-max rounded-xl bg-[#0f172a] px-2 py-3 text-xs text-slate-100 shadow-xl"
+                className={`pointer-events-none absolute z-20 w-max rounded-xl px-2 py-3 text-xs shadow-xl ${
+                  theme === "dark"
+                    ? "omni-tooltip-dark border border-[#3a4c68] bg-[#f8fbff] text-[#0f172a] shadow-[0_20px_45px_rgba(2,6,23,0.55)]"
+                    : "bg-[#0f172a] text-slate-100"
+                }`}
                 style={{ left: `${tooltip.x}px`, top: `${tooltip.y}px` }}
               >
-                <p className="px-4 font-semibold text-white">{tooltip.label}</p>
+                <p className={`px-4 font-semibold ${theme === "dark" ? "text-[#0f172a]" : "text-white"}`}>
+                  {tooltip.label}
+                </p>
                 <div className="mt-1 space-y-1">
                   <p className="px-4">
                     {isEn ? "Spend" : "Gasto"}:{" "}
@@ -518,11 +530,11 @@ export default function PerformanceCategoryPage(props: Props) {
           </div>
           <div className="mt-3 flex items-center justify-center gap-6 text-xs text-slate-700">
             <LegendItem
-              color="#7c3aed"
+              color={chartColors.cpr}
               label={isEn ? "Cost (cost per result)" : "Costo (costo por resultado)"}
             />
-            <LegendItem color="#1d4ed8" label={isEn ? "Spend" : "Gasto"} />
-            <LegendItem color="#10b981" label={isEn ? "Results" : "Resultados"} />
+            <LegendItem color={chartColors.spend} label={isEn ? "Spend" : "Gasto"} />
+            <LegendItem color={chartColors.results} label={isEn ? "Results" : "Resultados"} />
           </div>
         </section>
 
@@ -635,6 +647,7 @@ function GenericLineChart({
   showEndLabels: boolean;
 }) {
   const { locale } = useLocale();
+  const { theme } = useTheme();
   const isEn = locale === "en";
   const width = 980;
   const height = 280;
@@ -645,6 +658,18 @@ function GenericLineChart({
   const leftMax = Math.max(1, ...series.flatMap((d) => [Number(d.spend_usd || 0), Number(d.result_count || 0)]));
   const rightMax = Math.max(1, ...series.map((d) => Number(d.cost_per_result_usd || 0)));
   const horizontalGridSteps = 6;
+  const chartColors =
+    theme === "dark"
+      ? {
+          spend: "#60a5fa",
+          results: "#22d3ee",
+          cpr: "#fbbf24",
+        }
+      : {
+          spend: "#1d4ed8",
+          results: "#10b981",
+          cpr: "#7c3aed",
+        };
 
   const getHourMinuteInTimeZone = (iso: string) => {
     const parts = new Intl.DateTimeFormat("en-GB", {
@@ -718,13 +743,13 @@ function GenericLineChart({
       {
         key: "spend",
         text: `${isEn ? "Spend" : "Gasto"}: ${formatMoneyBySymbol(last.spendUsd, currencySymbol)}`,
-        color: "#1d4ed8",
+        color: chartColors.spend,
         targetY: last.spendY - 6,
       },
       {
         key: "results",
         text: `${resultLabel}: ${last.results}`,
-        color: "#10b981",
+        color: chartColors.results,
         targetY: last.resultsY - 6,
       },
     ];
@@ -733,7 +758,7 @@ function GenericLineChart({
       raw.push({
         key: "cpr",
         text: `${isEn ? "Cost" : "Costo"}: ${formatMoneyBySymbol(last.cpr, currencySymbol)}`,
-        color: "#7c3aed",
+        color: chartColors.cpr,
         targetY: last.cprY - 6,
       });
     }
@@ -763,7 +788,7 @@ function GenericLineChart({
       x: baseX,
       y: item.y,
     }));
-  }, [points, width, height, padding.top, padding.right, padding.bottom, currencySymbol, resultLabel]);
+  }, [points, width, height, padding.top, padding.right, padding.bottom, currencySymbol, resultLabel, chartColors, isEn]);
 
   const setLineTooltipFromMouse = (metric: "spend" | "results" | "cpr", event: ReactMouseEvent<SVGPathElement>) => {
     const svg = event.currentTarget.ownerSVGElement;
@@ -779,7 +804,8 @@ function GenericLineChart({
     );
 
     const markerY = metric === "spend" ? nearest.spendY : metric === "results" ? nearest.resultsY : nearest.cprY!;
-    const markerColor = metric === "spend" ? "#1d4ed8" : metric === "results" ? "#10b981" : "#7c3aed";
+    const markerColor =
+      metric === "spend" ? chartColors.spend : metric === "results" ? chartColors.results : chartColors.cpr;
 
     onHover({
       ...nearest,
@@ -870,9 +896,9 @@ function GenericLineChart({
         {isEn ? "Cost per result" : "Costo por resultado"}
       </text>
 
-      {spendPath ? <path d={spendPath} fill="none" stroke="#1d4ed8" strokeWidth="2.8" strokeLinecap="round" /> : null}
-      {resultsPath ? <path d={resultsPath} fill="none" stroke="#10b981" strokeWidth="2.8" strokeLinecap="round" /> : null}
-      {cprPath ? <path d={cprPath} fill="none" stroke="#7c3aed" strokeWidth="2.8" strokeLinecap="round" /> : null}
+      {spendPath ? <path d={spendPath} fill="none" stroke={chartColors.spend} strokeWidth="2.8" strokeLinecap="round" /> : null}
+      {resultsPath ? <path d={resultsPath} fill="none" stroke={chartColors.results} strokeWidth="2.8" strokeLinecap="round" /> : null}
+      {cprPath ? <path d={cprPath} fill="none" stroke={chartColors.cpr} strokeWidth="2.8" strokeLinecap="round" /> : null}
 
       {showEndLabels
         ? endLabels.map((label) => (
