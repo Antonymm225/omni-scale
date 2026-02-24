@@ -18,6 +18,7 @@ export default function IntegracionesPage() {
   const [savingOpenAi, setSavingOpenAi] = useState(false);
   const [savingWhatsapp, setSavingWhatsapp] = useState(false);
   const [verifyingWhatsapp, setVerifyingWhatsapp] = useState(false);
+  const [savingWhatsappNotifications, setSavingWhatsappNotifications] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [whatsappError, setWhatsappError] = useState<string | null>(null);
@@ -32,6 +33,7 @@ export default function IntegracionesPage() {
   const [whatsappVerified, setWhatsappVerified] = useState(false);
   const [whatsappHasPendingCode, setWhatsappHasPendingCode] = useState(false);
   const [editingWhatsappNumber, setEditingWhatsappNumber] = useState(false);
+  const [whatsappNotificationsEnabled, setWhatsappNotificationsEnabled] = useState(true);
   const [savedWhatsappNumber, setSavedWhatsappNumber] = useState("");
   const [savedFlags, setSavedFlags] = useState<SavedFlags>({
     everflowApiKey: false,
@@ -85,7 +87,7 @@ export default function IntegracionesPage() {
         setSavedWhatsappNumber(loadedWhatsapp.replace(/\D/g, ""));
         const { data: whatsappMeta, error: whatsappMetaError } = await supabase
           .from("user_integrations")
-          .select("whatsapp_verified,whatsapp_verification_code,whatsapp_last_error")
+          .select("whatsapp_verified,whatsapp_verification_code,whatsapp_last_error,whatsapp_notifications_enabled")
           .eq("user_id", user.id)
           .maybeSingle();
         let whatsappIsConnected = Boolean(loadedWhatsapp);
@@ -93,11 +95,15 @@ export default function IntegracionesPage() {
           setWhatsappVerified(Boolean(whatsappMeta?.whatsapp_verified));
           setWhatsappHasPendingCode(Boolean(whatsappMeta?.whatsapp_verification_code));
           setWhatsappError((whatsappMeta?.whatsapp_last_error as string | null) || null);
+          setWhatsappNotificationsEnabled(
+            (whatsappMeta?.whatsapp_notifications_enabled as boolean | null | undefined) ?? true
+          );
           whatsappIsConnected = Boolean(loadedWhatsapp) && Boolean(whatsappMeta?.whatsapp_verified);
         } else {
           setWhatsappVerified(Boolean(loadedWhatsapp));
           setWhatsappHasPendingCode(false);
           setWhatsappError(null);
+          setWhatsappNotificationsEnabled(true);
         }
         setSavedFlags({
           everflowApiKey: Boolean(data.everflow_api_key),
@@ -234,6 +240,35 @@ export default function IntegracionesPage() {
     setSavedFlags((prev) => ({ ...prev, whatsapp: true }));
     setNotice("WhatsApp conectado.");
     setVerifyingWhatsapp(false);
+  };
+
+  const toggleWhatsappNotifications = async () => {
+    if (!userId) return;
+    setSavingWhatsappNotifications(true);
+    setError(null);
+    setNotice(null);
+
+    const next = !whatsappNotificationsEnabled;
+    const { error: upsertError } = await supabase
+      .from("user_integrations")
+      .upsert({ user_id: userId, whatsapp_notifications_enabled: next });
+
+    if (upsertError) {
+      const message = (upsertError.message || "").toLowerCase();
+      if (message.includes("whatsapp_notifications_enabled")) {
+        setError(
+          "Falta la columna whatsapp_notifications_enabled en user_integrations. Ejecuta el SQL de actualizacion."
+        );
+      } else {
+        setError(upsertError.message);
+      }
+      setSavingWhatsappNotifications(false);
+      return;
+    }
+
+    setWhatsappNotificationsEnabled(next);
+    setNotice(next ? "Notificaciones AI activadas." : "Notificaciones AI pausadas.");
+    setSavingWhatsappNotifications(false);
   };
 
   const normalizedCurrentWhatsapp = whatsappNumber.replace(/\D/g, "");
@@ -413,6 +448,13 @@ export default function IntegracionesPage() {
               >
                 Estado de conexion: {whatsappCanSend ? "Enviando mensajes" : "No se puede enviar mensajes"}
               </p>
+              <p
+                className={`mt-1 text-xs font-medium ${
+                  whatsappNotificationsEnabled ? "text-emerald-600" : "text-amber-600"
+                }`}
+              >
+                Notificaciones IA: {whatsappNotificationsEnabled ? "Activas" : "Pausadas"}
+              </p>
 
               {showWhatsappVerificationFlow ? (
                 <label className="mt-3 block">
@@ -451,7 +493,23 @@ export default function IntegracionesPage() {
                 </button>
               </div>
             ) : (
-              <div className="mt-4">
+              <div className="mt-4 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={toggleWhatsappNotifications}
+                  disabled={loading || savingWhatsappNotifications}
+                  className={`inline-flex items-center justify-center rounded-lg px-4 py-2 text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-50 ${
+                    whatsappNotificationsEnabled
+                      ? "border border-amber-500 bg-amber-50 text-amber-700 hover:bg-amber-100"
+                      : "border border-emerald-500 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                  }`}
+                >
+                  {savingWhatsappNotifications
+                    ? "Guardando..."
+                    : whatsappNotificationsEnabled
+                      ? "Pausar notificaciones IA"
+                      : "Reanudar notificaciones IA"}
+                </button>
                 <button
                   type="button"
                   onClick={() => {

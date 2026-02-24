@@ -708,18 +708,21 @@ async function getUserOpenAiApiKey(userId: string) {
 type WhatsappIntegrationConfig = {
   whatsapp_number: string | null;
   whatsapp_verified: boolean | null;
+  whatsapp_notifications_enabled: boolean | null;
 };
 
 async function getUserWhatsappIntegration(userId: string): Promise<WhatsappIntegrationConfig> {
   const { data, error } = await supabaseAdmin
     .from("user_integrations")
-    .select("whatsapp_number,whatsapp_verified")
+    .select("whatsapp_number,whatsapp_verified,whatsapp_notifications_enabled")
     .eq("user_id", userId)
     .maybeSingle();
   if (error) throw new Error(error.message);
   return {
     whatsapp_number: (data?.whatsapp_number as string | null) || null,
     whatsapp_verified: (data?.whatsapp_verified as boolean | null) || false,
+    whatsapp_notifications_enabled:
+      (data?.whatsapp_notifications_enabled as boolean | null | undefined) ?? true,
   };
 }
 
@@ -916,6 +919,7 @@ async function sendLeadsWhatsappAlerts(params: {
 }) {
   const integration = await getUserWhatsappIntegration(params.userId);
   if (!integration.whatsapp_verified || !integration.whatsapp_number) return;
+  if (!integration.whatsapp_notifications_enabled) return;
 
   const leadsSets = await getLeadsEntitySets(params.userId);
   const cplTarget = await getUserLeadsCplTarget(params.userId);
@@ -1582,6 +1586,9 @@ export async function syncUserDashboardMetrics(
     const insightRow = insights.data?.[0];
     const spendValue = Number(insightRow?.spend || 0);
     const leadsCount = parseLeadCount(insightRow?.actions);
+    if (spendValue <= 0) {
+      continue;
+    }
     const spendUsd = spendValue > 0 ? convertToUsd(spendValue, ad.currency, rates) : 0;
     const costPerResultUsd = leadsCount > 0 ? Number((spendUsd / leadsCount).toFixed(2)) : null;
 
@@ -1789,7 +1796,7 @@ export async function syncUserMessagingMetrics(
       accountResults > 0 ? Number((accountSpendUsd / accountResults).toFixed(2)) : null;
     const isActiveAccount = accountActiveAds > 0;
 
-    if (accountSpendOriginal <= 0 && accountResults <= 0 && accountActiveAds <= 0) {
+    if (accountSpendOriginal <= 0) {
       continue;
     }
 
@@ -1956,7 +1963,7 @@ export async function syncUserLeadsMetrics(
       accountLeads > 0 ? Number((accountSpendUsd / accountLeads).toFixed(2)) : null;
     const isActiveAccount = accountActiveAds > 0;
 
-    if (accountSpendOriginal <= 0 && accountLeads <= 0 && accountActiveAds <= 0) {
+    if (accountSpendOriginal <= 0) {
       continue;
     }
 
@@ -2121,7 +2128,7 @@ export async function syncUserBrandingMetrics(
       accountResults > 0 ? Number((accountSpendUsd / accountResults).toFixed(2)) : null;
     const isActiveAccount = accountActiveAds > 0;
 
-    if (accountSpendOriginal <= 0 && accountResults <= 0 && accountActiveAds <= 0) {
+    if (accountSpendOriginal <= 0) {
       continue;
     }
 
@@ -2311,7 +2318,7 @@ export async function syncUserSalesMetrics(
       accountResults > 0 ? Number((accountSpendUsd / accountResults).toFixed(2)) : null;
     const isActiveAccount = accountActiveAds > 0;
 
-    if (accountSpendOriginal <= 0 && accountResults <= 0 && accountActiveAds <= 0) {
+    if (accountSpendOriginal <= 0) {
       continue;
     }
 

@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient as createServerSupabaseClient } from "../../../../lib/supabase-server";
 import { supabaseAdmin } from "../../../../lib/supabase-admin";
-import { syncUserAllMetrics, syncUserLeadsMetrics } from "../../../../lib/facebook-metrics";
+import {
+  syncUserAllMetrics,
+  syncUserLeadsMetrics,
+  syncUserPerformanceMonitoring,
+} from "../../../../lib/facebook-metrics";
 
 export async function POST(request: NextRequest) {
   try {
@@ -32,7 +36,12 @@ export async function POST(request: NextRequest) {
     const scope = request.nextUrl.searchParams.get("scope");
     if (scope === "leads") {
       const leadsSummary = await syncUserLeadsMetrics(user.id, connection.access_token);
-      return NextResponse.json({ ok: true, scope: "leads", summary: { leads: leadsSummary } });
+      const monitoringSummary = await syncUserPerformanceMonitoring(user.id, connection.access_token);
+      return NextResponse.json({
+        ok: true,
+        scope: "leads",
+        summary: { leads: leadsSummary, monitoring: monitoringSummary },
+      });
     }
 
     const summary = await syncUserAllMetrics(user.id, connection.access_token);
