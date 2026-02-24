@@ -1,4 +1,4 @@
-﻿export type PerformanceType = "SALES" | "LEADS" | "MESSAGING" | "AWARENESS";
+export type PerformanceType = "SALES" | "LEADS" | "MESSAGING" | "AWARENESS";
 
 export type ClassificationSource = "auto" | "manual";
 
@@ -21,48 +21,38 @@ export type AdsetClassificationInput = {
   campaign_objective?: string | null;
 };
 
-const SALES_OPTIMIZATION = new Set(["OFFSITE_CONVERSIONS", "PURCHASE", "VALUE"]);
-const LEADS_OPTIMIZATION = new Set(["LEAD_GENERATION", "LEAD", "COMPLETE_REGISTRATION"]);
+const SALES_OPTIMIZATION = new Set([
+  "OFFSITE_CONVERSIONS",
+  "VALUE",
+  "PURCHASE",
+  "ADD_TO_CART",
+  "INITIATE_CHECKOUT",
+]);
+
+const LEADS_OPTIMIZATION = new Set([
+  "LEAD_GENERATION",
+  "LEAD",
+  "COMPLETE_REGISTRATION",
+  "CONTACT",
+  "SUBSCRIBE",
+  "START_TRIAL",
+]);
+
 const MESSAGING_OPTIMIZATION = new Set([
-  "MESSAGING_CONVERSATIONS",
   "CONVERSATIONS",
   "MESSAGING_CONVERSATION_STARTED",
 ]);
-const AWARENESS_OPTIMIZATION = new Set([
-  "REACH",
-  "IMPRESSIONS",
-  "VIDEO_VIEWS",
-  "POST_ENGAGEMENT",
-  "LINK_CLICKS",
-  "LANDING_PAGE_VIEWS",
-]);
 
-const SALES_OBJECTIVES = ["OUTCOME_SALES", "SALES"];
-const LEADS_OBJECTIVES = ["OUTCOME_LEADS", "LEADS", "LEAD_GENERATION"];
-const AWARENESS_OBJECTIVES = [
-  "OUTCOME_AWARENESS",
-  "AWARENESS",
-  "OUTCOME_TRAFFIC",
-  "TRAFFIC",
-  "OUTCOME_ENGAGEMENT",
-  "ENGAGEMENT",
-];
-
-const MESSAGING_DESTINATIONS = [
+const MESSAGING_DESTINATION_MARKERS = [
   "WHATSAPP",
   "MESSENGER",
   "INSTAGRAM_DIRECT",
-  "CLICK_TO_MESSAGE",
+  "MESSAGING_INSTAGRAM_DIRECT_MESSENGER",
+  "MESSAGING_INSTAGRAM_DIRECT_MESSENGER_WHATSAPP",
+  "MESSAGING_INSTAGRAM_DIRECT_WHATSAPP",
+  "MESSAGING_MESSENGER_WHATSAPP",
 ];
 
-const SALES_ACTIONS = ["purchase", "offsite_conversion.fb_pixel_purchase", "omni_purchase"];
-const LEAD_ACTIONS = [
-  "lead",
-  "onsite_conversion.lead",
-  "onsite_conversion.lead_grouped",
-  "offsite_conversion.fb_pixel_lead",
-  "offsite_conversion.lead",
-];
 const MESSAGING_ACTIONS = [
   "messages_started_7d",
   "onsite_conversion.messages_started_7d",
@@ -76,89 +66,55 @@ const MESSAGING_ACTIONS = [
 function includesAny(value: string | undefined, keywords: string[]) {
   if (!value) return false;
   const upper = value.toUpperCase();
-  return keywords.some((kw) => upper.includes(kw));
-}
-
-function hasLeadForm(promotedObject?: Record<string, unknown> | null) {
-  if (!promotedObject) return false;
-
-  const directCandidates = [
-    "lead_gen_form_id",
-    "leadgen_form_id",
-    "instant_form_id",
-    "lead_form_id",
-  ];
-
-  for (const key of directCandidates) {
-    if (promotedObject[key]) return true;
-  }
-
-  return Object.keys(promotedObject).some((key) => key.toLowerCase().includes("lead") && Boolean(promotedObject[key]));
-}
-
-function hasAction(actions: Action[] | undefined, patterns: string[]) {
-  if (!actions || actions.length === 0) return false;
-  return actions.some((a) => {
-    const actionType = (a.action_type || "").toLowerCase();
-    return patterns.some((p) => actionType === p.toLowerCase());
-  });
+  return keywords.some((keyword) => upper.includes(keyword));
 }
 
 export function classifyAdset(
   adsetData: AdsetClassificationInput,
-  insightsData?: { actions?: Action[] }
+  _insightsData?: { actions?: Action[] }
 ): ClassificationResult {
   const optimizationGoal = (adsetData.optimization_goal || "").toUpperCase();
   const destinationType = adsetData.destination_type || "";
-  const campaignObjective = (adsetData.campaign_objective || "").toUpperCase();
 
-  // STEP 2: overrides by destination or promoted object
-  if (includesAny(destinationType, MESSAGING_DESTINATIONS)) {
-    return { performanceType: "MESSAGING", classificationSource: "auto", confidenceScore: 96 };
-  }
+  // Classification uses real optimization outcome only.
+  // campaign_objective is intentionally not used to determine category.
 
-  if (hasLeadForm(adsetData.promoted_object || null)) {
-    return { performanceType: "LEADS", classificationSource: "auto", confidenceScore: 95 };
-  }
-
-  // Campaign objective signal (important for ODAX objectives like OUTCOME_LEADS).
-  if (includesAny(campaignObjective, LEADS_OBJECTIVES)) {
-    return { performanceType: "LEADS", classificationSource: "auto", confidenceScore: 92 };
-  }
-  if (includesAny(campaignObjective, SALES_OBJECTIVES)) {
-    return { performanceType: "SALES", classificationSource: "auto", confidenceScore: 90 };
-  }
-  if (includesAny(campaignObjective, AWARENESS_OBJECTIVES)) {
-    return { performanceType: "AWARENESS", classificationSource: "auto", confidenceScore: 86 };
+  // 1) MENSAJES (highest priority)
+  if (
+    includesAny(destinationType, MESSAGING_DESTINATION_MARKERS) ||
+    MESSAGING_OPTIMIZATION.has(optimizationGoal)
+  ) {
+    return {
+      performanceType: "MESSAGING",
+      classificationSource: "auto",
+      confidenceScore: 96,
+    };
   }
 
-  // STEP 3: performance validation from actions
-  if (hasAction(insightsData?.actions, SALES_ACTIONS)) {
-    return { performanceType: "SALES", classificationSource: "auto", confidenceScore: 93 };
-  }
-  if (hasAction(insightsData?.actions, LEAD_ACTIONS)) {
-    return { performanceType: "LEADS", classificationSource: "auto", confidenceScore: 93 };
-  }
-  if (hasAction(insightsData?.actions, MESSAGING_ACTIONS)) {
-    return { performanceType: "MESSAGING", classificationSource: "auto", confidenceScore: 93 };
-  }
-
-  // STEP 1: primary optimization goal
+  // 2) VENTAS
   if (SALES_OPTIMIZATION.has(optimizationGoal)) {
-    return { performanceType: "SALES", classificationSource: "auto", confidenceScore: 88 };
-  }
-  if (LEADS_OPTIMIZATION.has(optimizationGoal)) {
-    return { performanceType: "LEADS", classificationSource: "auto", confidenceScore: 88 };
-  }
-  if (MESSAGING_OPTIMIZATION.has(optimizationGoal)) {
-    return { performanceType: "MESSAGING", classificationSource: "auto", confidenceScore: 88 };
-  }
-  if (AWARENESS_OPTIMIZATION.has(optimizationGoal)) {
-    return { performanceType: "AWARENESS", classificationSource: "auto", confidenceScore: 84 };
+    return {
+      performanceType: "SALES",
+      classificationSource: "auto",
+      confidenceScore: 92,
+    };
   }
 
-  // STEP 4 fallback
-  return { performanceType: "AWARENESS", classificationSource: "auto", confidenceScore: 55 };
+  // 3) LEADS
+  if (LEADS_OPTIMIZATION.has(optimizationGoal)) {
+    return {
+      performanceType: "LEADS",
+      classificationSource: "auto",
+      confidenceScore: 90,
+    };
+  }
+
+  // 4) BRANDING fallback (stored as AWARENESS)
+  return {
+    performanceType: "AWARENESS",
+    classificationSource: "auto",
+    confidenceScore: 80,
+  };
 }
 
 export function parseMessagingResultCount(actions?: Action[]) {
