@@ -3,9 +3,14 @@
 import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
+import { localizePublicPath } from "../../lib/locale";
+import { useLocale } from "../../providers/LocaleProvider";
+import LocaleToggle from "../../components/locale-toggle";
 
 export default function SignIn() {
   const router = useRouter();
+  const { locale } = useLocale();
+  const isEn = locale === "en";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -48,26 +53,44 @@ export default function SignIn() {
               OMNI Scale
             </h1>
             <p className="text-slate-300 text-lg leading-relaxed">
-              Testea, escala y automatiza tus campanas - 10x mas rapido.
+              {isEn
+                ? "Test, scale and automate your campaigns 10x faster."
+                : "Testea, escala y automatiza tus campanas - 10x mas rapido."}
             </p>
           </div>
 
           <div className="space-y-8 text-slate-300">
-            <Feature icon="zap" text="Lanza cientos de variaciones de anuncios" />
-            <Feature icon="sparkles" text="Identifica los anuncios con mejor rendimiento" />
-            <Feature icon="chart" text="Las campanas aprenden y evolucionan" />
+            <Feature
+              icon="zap"
+              text={isEn ? "Launch hundreds of ad variations" : "Lanza cientos de variaciones de anuncios"}
+            />
+            <Feature
+              icon="sparkles"
+              text={
+                isEn
+                  ? "Identify top-performing ads faster"
+                  : "Identifica los anuncios con mejor rendimiento"
+              }
+            />
+            <Feature
+              icon="chart"
+              text={isEn ? "Campaigns learn and evolve over time" : "Las campanas aprenden y evolucionan"}
+            />
           </div>
         </div>
       </div>
 
       <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-[#F5F5F5]">
         <div className="max-w-md w-full space-y-6 bg-white rounded-xl shadow-sm border border-slate-200 p-10">
+          <div className="flex justify-end">
+            <LocaleToggle />
+          </div>
           <div className="text-center mb-6">
             <h2 className="text-3xl font-semibold text-[#26251E] mb-2">
-              Hola de nuevo
+              {isEn ? "Welcome back" : "Hola de nuevo"}
             </h2>
             <p className="text-slate-600 text-sm">
-              Ingresa a tu cuenta OMNI Scale
+              {isEn ? "Sign in to your OMNI Scale account" : "Ingresa a tu cuenta OMNI Scale"}
             </p>
           </div>
 
@@ -80,23 +103,25 @@ export default function SignIn() {
               className="w-5 h-5"
               alt="Google"
             />
-            Continuar con Google
+            {isEn ? "Continue with Google" : "Continuar con Google"}
           </button>
 
           <div className="flex items-center gap-4">
             <div className="flex-1 h-px bg-slate-200" />
-            <span className="text-xs text-slate-400">O continuar con correo</span>
+            <span className="text-xs text-slate-400">
+              {isEn ? "Or continue with email" : "O continuar con correo"}
+            </span>
             <div className="flex-1 h-px bg-slate-200" />
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
               <label className="text-sm font-medium text-slate-700">
-                Correo electronico
+                {isEn ? "Email" : "Correo electronico"}
               </label>
               <input
                 type="email"
-                placeholder="Ingresa tu correo"
+                placeholder={isEn ? "Enter your email" : "Ingresa tu correo"}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -107,15 +132,15 @@ export default function SignIn() {
             <div>
               <div className="flex justify-between items-center">
                 <label className="text-sm font-medium text-slate-700">
-                  Contrasena
+                  {isEn ? "Password" : "Contrasena"}
                 </label>
                 <a href="#" className="text-xs text-slate-500 hover:text-black">
-                  Olvidaste tu contrasena?
+                  {isEn ? "Forgot your password?" : "Olvidaste tu contrasena?"}
                 </a>
               </div>
               <input
                 type="password"
-                placeholder="Contrasena"
+                placeholder={isEn ? "Password" : "Contrasena"}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
@@ -132,29 +157,32 @@ export default function SignIn() {
               disabled={isLoading}
               className="w-full bg-gradient-to-b from-black to-[#2C2C2C] text-white font-semibold py-2.5 px-6 rounded-lg hover:opacity-90 transition disabled:opacity-60 disabled:cursor-not-allowed"
             >
-              {isLoading ? "Ingresando..." : "Iniciar sesion"}
+              {isLoading ? (isEn ? "Signing in..." : "Ingresando...") : isEn ? "Sign in" : "Iniciar sesion"}
             </button>
           </form>
 
           <div className="text-center text-sm text-slate-600">
-            No tienes una cuenta?{" "}
-            <a href="/signup" className="font-medium text-black hover:underline">
-              Registrate
+            {isEn ? "Don't have an account?" : "No tienes una cuenta?"}{" "}
+            <a
+              href={localizePublicPath(locale, "/signup")}
+              className="font-medium text-black hover:underline"
+            >
+              {isEn ? "Create account" : "Registrate"}
             </a>
           </div>
 
           <p className="text-xs text-center text-slate-400 leading-relaxed">
-            Al iniciar sesion, aceptas nuestros{" "}
-            <a href="/terms-and-conditions" className="underline hover:text-black">
-              Terminos y Condiciones
+            {isEn ? "By signing in, you accept our" : "Al iniciar sesion, aceptas nuestros"}{" "}
+            <a href={localizePublicPath(locale, "/terms-and-conditions")} className="underline hover:text-black">
+              {isEn ? "Terms and Conditions" : "Terminos y Condiciones"}
             </a>{" "}
-            y{" "}
-            <a href="/privacy-policy" className="underline hover:text-black">
-              Politica de Privacidad
+            {isEn ? "and" : "y"}{" "}
+            <a href={localizePublicPath(locale, "/privacy-policy")} className="underline hover:text-black">
+              {isEn ? "Privacy Policy" : "Politica de Privacidad"}
             </a>{" "}
-            y{" "}
-            <a href="/data-deletion-policy" className="underline hover:text-black">
-              Politica de Eliminacion de Datos
+            {isEn ? "and" : "y"}{" "}
+            <a href={localizePublicPath(locale, "/data-deletion-policy")} className="underline hover:text-black">
+              {isEn ? "Data Deletion Policy" : "Politica de Eliminacion de Datos"}
             </a>
             .
           </p>

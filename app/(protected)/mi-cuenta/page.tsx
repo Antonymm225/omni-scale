@@ -3,12 +3,15 @@
 import { useEffect, useState, type ChangeEvent } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
+import { localizePublicPath, type AppLocale } from "../../lib/locale";
+import { useLocale } from "../../providers/LocaleProvider";
 
 type ProfileState = {
   name: string;
   email: string;
   avatarUrl: string | null;
   timezoneName: string;
+  languageCode: AppLocale;
 };
 
 const TIMEZONE_OPTIONS = [
@@ -43,6 +46,7 @@ const TIMEZONE_OPTIONS = [
 ];
 
 export default function Page() {
+  const { locale, setLocale } = useLocale();
   const router = useRouter();
   const [uploading, setUploading] = useState(false);
   const [resettingData, setResettingData] = useState(false);
@@ -58,8 +62,10 @@ export default function Page() {
     email: "",
     avatarUrl: null,
     timezoneName: "America/Lima",
+    languageCode: locale,
   });
   const [savingTimezone, setSavingTimezone] = useState(false);
+  const [savingLanguage, setSavingLanguage] = useState(false);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -77,20 +83,29 @@ export default function Page() {
 
       const { data: profileRow } = await supabase
         .from("profiles")
-        .select("timezone_name")
+        .select("*")
         .eq("id", user.id)
         .maybeSingle();
+
+      const languageCode =
+        (profileRow?.language_code as string | null) === "es" ||
+        (profileRow?.language_code as string | null) === "en"
+          ? (profileRow?.language_code as AppLocale)
+          : locale;
+
+      setLocale(languageCode);
 
       setProfile({
         name: fullName,
         email: user.email || "",
         avatarUrl: (user.user_metadata?.avatar_url as string | undefined) || null,
         timezoneName: (profileRow?.timezone_name as string | null) || "America/Lima",
+        languageCode,
       });
     };
 
     void loadProfile();
-  }, []);
+  }, [locale, setLocale]);
 
   useEffect(() => {
     if (!showDeleteAccountBox) {
@@ -121,7 +136,7 @@ export default function Page() {
 
   const handleSignOut = async () => {
     await supabase.auth.signOut();
-    router.replace("/signin");
+    router.replace(localizePublicPath(profile.languageCode || locale, "/signin"));
   };
 
   const handleAvatarUpload = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -214,6 +229,38 @@ export default function Page() {
     }
   };
 
+  const handleLanguageSave = async () => {
+    setError(null);
+    setNotice(null);
+    setSavingLanguage(true);
+    try {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) throw new Error("No se pudo validar la sesion.");
+
+      const { error: upsertError } = await supabase.from("profiles").upsert(
+        {
+          id: user.id,
+          email: user.email || null,
+          name: profile.name || null,
+          language_code: profile.languageCode,
+        },
+        { onConflict: "id" }
+      );
+      if (upsertError) throw new Error(upsertError.message);
+
+      setLocale(profile.languageCode);
+      setNotice("Idioma guardado. Recargando...");
+      window.location.reload();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "No se pudo guardar el idioma.");
+    } finally {
+      setSavingLanguage(false);
+    }
+  };
+
   const handleResetData = async () => {
     setError(null);
     setNotice(null);
@@ -234,7 +281,7 @@ export default function Page() {
     try {
       const response = await fetch("/api/account/reset-data", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json; charset=utf-8" },
         body: JSON.stringify({ confirm: resetConfirm }),
       });
 
@@ -274,7 +321,7 @@ export default function Page() {
     try {
       const response = await fetch("/api/account/delete", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json; charset=utf-8" },
         body: JSON.stringify({ confirm: deleteConfirm }),
       });
 
@@ -411,6 +458,36 @@ export default function Page() {
           >
             Ir a facturación
           </button>
+        </div>
+
+        <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
+          <p className="text-sm font-semibold text-[#111827]">Idioma de la aplicación</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Este idioma será tu predeterminado al iniciar sesión.
+          </p>
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <select
+              value={profile.languageCode}
+              onChange={(event) =>
+                setProfile((prev) => ({
+                  ...prev,
+                  languageCode: event.target.value === "es" ? "es" : "en",
+                }))
+              }
+              className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-[#1D293D] outline-none ring-[#1D293D] focus:ring-2 sm:max-w-sm"
+            >
+              <option value="es">Español</option>
+              <option value="en">English</option>
+            </select>
+            <button
+              type="button"
+              onClick={handleLanguageSave}
+              disabled={savingLanguage}
+              className="inline-flex items-center justify-center rounded-lg bg-[#1D293D] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {savingLanguage ? "Guardando..." : "Guardar idioma"}
+            </button>
+          </div>
         </div>
 
         <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">

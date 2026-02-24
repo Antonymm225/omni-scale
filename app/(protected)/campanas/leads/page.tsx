@@ -2,15 +2,19 @@
 
 import PerformanceCategoryPage from "../../../components/performance-category-page";
 import LeadsEntitiesPanel from "../../../components/leads-entities-panel";
+import { useLocale } from "../../../providers/LocaleProvider";
 
 export default function LeadsPage() {
+  const { locale } = useLocale();
+  const isEn = locale === "en";
+
   return (
     <PerformanceCategoryPage
-      title="Leads"
-      subtitle="Metricas solo de adsets clasificados como LEADS."
+      title={isEn ? "Leads" : "Leads"}
+      subtitle={isEn ? "Metrics only for adsets classified as LEADS." : "Metricas solo de adsets clasificados como LEADS."}
       resultTerm="Leads"
-      resultSubtitle="Leads captados"
-      syncScopeSubtitle="Solo campanas de leads."
+      resultSubtitle={isEn ? "Captured leads" : "Leads captados"}
+      syncScopeSubtitle={isEn ? "Leads campaigns only." : "Solo campanas de leads."}
       metricsTable="facebook_leads_metrics"
       summaryResultField="total_leads"
       accountTable="facebook_leads_ad_account_metrics"

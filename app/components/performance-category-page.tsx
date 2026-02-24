@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { supabase } from "../lib/supabaseClient";
 import type { ReactNode } from "react";
+import { useLocale } from "../providers/LocaleProvider";
 
 type RangeKey = "today" | "yesterday" | "3d" | "7d";
 type XMode = "hour" | "day";
@@ -82,11 +83,11 @@ type Props = {
   children?: ReactNode;
 };
 
-const RANGE_OPTIONS: Array<{ key: RangeKey; label: string }> = [
-  { key: "today", label: "Hoy" },
-  { key: "yesterday", label: "Ayer" },
-  { key: "3d", label: "3 dias" },
-  { key: "7d", label: "7 dias" },
+const RANGE_OPTIONS: Array<{ key: RangeKey; labelEs: string; labelEn: string }> = [
+  { key: "today", labelEs: "Hoy", labelEn: "Today" },
+  { key: "yesterday", labelEs: "Ayer", labelEn: "Yesterday" },
+  { key: "3d", labelEs: "3 dias", labelEn: "3 days" },
+  { key: "7d", labelEs: "7 dias", labelEn: "7 days" },
 ];
 
 function formatDateParts(date: Date) {
@@ -148,6 +149,8 @@ function buildRange(range: RangeKey, timeZone: string) {
 }
 
 export default function PerformanceCategoryPage(props: Props) {
+  const { locale } = useLocale();
+  const isEn = locale === "en";
   const [range, setRange] = useState<RangeKey>("today");
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -171,7 +174,7 @@ export default function PerformanceCategoryPage(props: Props) {
     } = await supabase.auth.getUser();
 
     if (userError || !user) {
-      setError("No se pudo validar la sesion.");
+      setError(isEn ? "Could not validate the session." : "No se pudo validar la sesion.");
       setLoading(false);
       return;
     }
@@ -362,12 +365,12 @@ export default function PerformanceCategoryPage(props: Props) {
         ok?: boolean;
       };
       if (!response.ok || !payload.ok) {
-        throw new Error(payload.error || "No se pudo sincronizar.");
+        throw new Error(payload.error || (isEn ? "Could not sync." : "No se pudo sincronizar."));
       }
-      setNotice("Sincronizacion ejecutada correctamente.");
+      setNotice(isEn ? "Sync completed successfully." : "Sincronizacion ejecutada correctamente.");
       await loadMetrics();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "No se pudo sincronizar.");
+      setError(err instanceof Error ? err.message : isEn ? "Could not sync." : "No se pudo sincronizar.");
     } finally {
       setSyncing(false);
     }
@@ -393,7 +396,7 @@ export default function PerformanceCategoryPage(props: Props) {
                     : "border border-slate-200 bg-white text-slate-700"
                 }`}
               >
-                {option.label}
+                {isEn ? option.labelEn : option.labelEs}
               </button>
             ))}
             <button
@@ -402,14 +405,17 @@ export default function PerformanceCategoryPage(props: Props) {
               disabled={syncing || range !== "today"}
               className="inline-flex items-center justify-center rounded-lg bg-[#1D293D] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {syncing ? "Sincronizando..." : "Sincronizar ahora"}
+              {syncing ? (isEn ? "Syncing..." : "Sincronizando...") : isEn ? "Sync now" : "Sincronizar ahora"}
             </button>
           </div>
         </header>
 
         {range !== "today" ? (
           <p className="mt-2 text-xs text-slate-500">
-            {props.syncScopeSubtitle} La sincronizacion manual solo aplica para Hoy.
+            {props.syncScopeSubtitle}{" "}
+            {isEn
+              ? "Manual sync applies only to Today."
+              : "La sincronizacion manual solo aplica para Hoy."}
           </p>
         ) : null}
 
@@ -426,14 +432,18 @@ export default function PerformanceCategoryPage(props: Props) {
 
         <section className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
           <MetricCard
-            title="Cuentas activas"
+            title={isEn ? "Active accounts" : "Cuentas activas"}
             value={summary?.activeAccountsCount ?? 0}
             subtitle={props.syncScopeSubtitle}
           />
           <MetricCard
-            title="Gasto total (USD)"
+            title={isEn ? "Total spend (USD)" : "Gasto total (USD)"}
             value={formatUsd(summary?.totalSpendUsd ?? 0)}
-            subtitle={`Rango: ${RANGE_OPTIONS.find((o) => o.key === range)?.label}`}
+            subtitle={`${isEn ? "Range" : "Rango"}: ${
+              isEn
+                ? RANGE_OPTIONS.find((o) => o.key === range)?.labelEn
+                : RANGE_OPTIONS.find((o) => o.key === range)?.labelEs
+            }`}
           />
           <MetricCard
             title={
@@ -445,24 +455,30 @@ export default function PerformanceCategoryPage(props: Props) {
             subtitle={props.resultSubtitle}
           />
           <MetricCard
-            title="Costo por resultado"
+            title={isEn ? "Cost per result" : "Costo por resultado"}
             value={summary?.costPerResultUsd != null ? formatUsd(summary.costPerResultUsd) : "-"}
-            subtitle="Gasto USD / resultados"
+            subtitle={isEn ? "USD spend / results" : "Gasto USD / resultados"}
           />
           <MetricCard
-            title="Ads activos"
+            title={isEn ? "Active ads" : "Ads activos"}
             value={summary?.activeAdsCount ?? 0}
-            subtitle="Maximo por cuenta en el rango"
+            subtitle={isEn ? "Maximum per account in range" : "Maximo por cuenta en el rango"}
           />
         </section>
 
         <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-            <h2 className="text-xl font-semibold text-[#111827]">Progreso del periodo - {props.title}</h2>
+            <h2 className="text-xl font-semibold text-[#111827]">
+              {isEn ? "Period progress" : "Progreso del periodo"} - {props.title}
+            </h2>
             <p className="text-xs text-slate-500">
               {rangeInfo.xMode === "hour"
-                ? "Eje X por hora (snapshots de 10 minutos)."
-                : "Eje X por dia (snapshot diario)."}
+                ? isEn
+                  ? "X axis by hour (10-minute snapshots)."
+                  : "Eje X por hora (snapshots de 10 minutos)."
+                : isEn
+                  ? "X axis by day (daily snapshot)."
+                  : "Eje X por dia (snapshot diario)."}
             </p>
           </div>
           <div className="relative mt-4 h-[320px] w-full rounded-xl border border-slate-100 bg-white p-3">
@@ -484,11 +500,14 @@ export default function PerformanceCategoryPage(props: Props) {
                 <p className="px-4 font-semibold text-white">{tooltip.label}</p>
                 <div className="mt-1 space-y-1">
                   <p className="px-4">
-                    Gasto: {formatMoneyBySymbol(tooltip.spendUsd, props.chartCurrencySymbol || "$")}
+                    {isEn ? "Spend" : "Gasto"}:{" "}
+                    {formatMoneyBySymbol(tooltip.spendUsd, props.chartCurrencySymbol || "$")}
                   </p>
-                  <p className="px-4">{props.tooltipResultsLabel || props.resultTerm}: {tooltip.results}</p>
                   <p className="px-4">
-                    Costo:{" "}
+                    {props.tooltipResultsLabel || props.resultTerm}: {tooltip.results}
+                  </p>
+                  <p className="px-4">
+                    {isEn ? "Cost" : "Costo"}:{" "}
                     {tooltip.cpr != null
                       ? formatMoneyBySymbol(tooltip.cpr, props.chartCurrencySymbol || "$")
                       : "-"}
@@ -498,18 +517,27 @@ export default function PerformanceCategoryPage(props: Props) {
             ) : null}
           </div>
           <div className="mt-3 flex items-center justify-center gap-6 text-xs text-slate-700">
-            <LegendItem color="#7c3aed" label="Costo (costo por resultado)" />
-            <LegendItem color="#1d4ed8" label="Gasto" />
-            <LegendItem color="#10b981" label="Resultados" />
+            <LegendItem
+              color="#7c3aed"
+              label={isEn ? "Cost (cost per result)" : "Costo (costo por resultado)"}
+            />
+            <LegendItem color="#1d4ed8" label={isEn ? "Spend" : "Gasto"} />
+            <LegendItem color="#10b981" label={isEn ? "Results" : "Resultados"} />
           </div>
         </section>
 
         <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-[#111827]">Ad Accounts del periodo</h2>
+            <h2 className="text-xl font-semibold text-[#111827]">
+              {isEn ? "Ad Accounts in range" : "Ad Accounts del periodo"}
+            </h2>
             <p className="text-xs text-slate-500">
-              Ultima sincronizacion:{" "}
-              {summary?.lastSyncedAt ? new Date(summary.lastSyncedAt).toLocaleString("es-PE") : "Aun no hay datos"}
+              {isEn ? "Last sync" : "Ultima sincronizacion"}:{" "}
+              {summary?.lastSyncedAt
+                ? new Date(summary.lastSyncedAt).toLocaleString(isEn ? "en-US" : "es-PE")
+                : isEn
+                  ? "No data yet"
+                  : "Aun no hay datos"}
             </p>
           </div>
 
@@ -518,24 +546,28 @@ export default function PerformanceCategoryPage(props: Props) {
               <thead>
                 <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
                   <th className="pb-3 pr-4 font-semibold">Ad Account</th>
-                  <th className="pb-3 pr-4 font-semibold">Campanas activas</th>
-                  <th className="pb-3 pr-4 font-semibold">Ads prendidos</th>
-                  <th className="pb-3 pr-4 font-semibold">Gasto (divisa)</th>
-                  <th className="pb-3 pr-4 font-semibold">Resultados</th>
-                  <th className="pb-3 font-semibold">Costo por resultado (USD)</th>
+                  <th className="pb-3 pr-4 font-semibold">
+                    {isEn ? "Active campaigns" : "Campanas activas"}
+                  </th>
+                  <th className="pb-3 pr-4 font-semibold">{isEn ? "Active ads" : "Ads prendidos"}</th>
+                  <th className="pb-3 pr-4 font-semibold">{isEn ? "Spend (currency)" : "Gasto (divisa)"}</th>
+                  <th className="pb-3 pr-4 font-semibold">{isEn ? "Results" : "Resultados"}</th>
+                  <th className="pb-3 font-semibold">
+                    {isEn ? "Cost per result (USD)" : "Costo por resultado (USD)"}
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
                     <td colSpan={6} className="py-6 text-sm text-slate-500">
-                      Cargando...
+                      {isEn ? "Loading..." : "Cargando..."}
                     </td>
                   </tr>
                 ) : accountRows.length === 0 ? (
                   <tr>
                     <td colSpan={6} className="py-6 text-sm text-slate-500">
-                      Sin datos para el rango seleccionado.
+                      {isEn ? "No data for selected range." : "Sin datos para el rango seleccionado."}
                     </td>
                   </tr>
                 ) : (
@@ -544,7 +576,9 @@ export default function PerformanceCategoryPage(props: Props) {
                       <td className="py-3 pr-4">
                         <div className="flex items-center gap-2">
                           <StatusDot isActive={isAccountStatusActive(row.account_status)} />
-                          <p className="text-sm font-semibold text-[#111827]">{row.account_name || "Sin nombre"}</p>
+                          <p className="text-sm font-semibold text-[#111827]">
+                            {row.account_name || (isEn ? "No name" : "Sin nombre")}
+                          </p>
                         </div>
                         <p className="text-xs text-slate-500">ID: {row.account_id || row.facebook_ad_account_id}</p>
                       </td>
@@ -600,6 +634,8 @@ function GenericLineChart({
   currencySymbol: string;
   showEndLabels: boolean;
 }) {
+  const { locale } = useLocale();
+  const isEn = locale === "en";
   const width = 980;
   const height = 280;
   const padding = { top: 20, right: 64, bottom: 34, left: 64 };
@@ -681,7 +717,7 @@ function GenericLineChart({
     const raw: Array<{ key: string; text: string; color: string; targetY: number }> = [
       {
         key: "spend",
-        text: `Gasto: ${formatMoneyBySymbol(last.spendUsd, currencySymbol)}`,
+        text: `${isEn ? "Spend" : "Gasto"}: ${formatMoneyBySymbol(last.spendUsd, currencySymbol)}`,
         color: "#1d4ed8",
         targetY: last.spendY - 6,
       },
@@ -696,7 +732,7 @@ function GenericLineChart({
     if (last.cpr != null && last.cprY != null) {
       raw.push({
         key: "cpr",
-        text: `Costo: ${formatMoneyBySymbol(last.cpr, currencySymbol)}`,
+        text: `${isEn ? "Cost" : "Costo"}: ${formatMoneyBySymbol(last.cpr, currencySymbol)}`,
         color: "#7c3aed",
         targetY: last.cprY - 6,
       });
@@ -821,7 +857,7 @@ function GenericLineChart({
         fill="#64748b"
         transform={`rotate(-90 16 ${padding.top + chartH / 2})`}
       >
-        Gasto / Resultados
+        {isEn ? "Spend / Results" : "Gasto / Resultados"}
       </text>
       <text
         x={width - 12}
@@ -831,7 +867,7 @@ function GenericLineChart({
         fill="#64748b"
         transform={`rotate(90 ${width - 12} ${padding.top + chartH / 2})`}
       >
-        Costo por resultado
+        {isEn ? "Cost per result" : "Costo por resultado"}
       </text>
 
       {spendPath ? <path d={spendPath} fill="none" stroke="#1d4ed8" strokeWidth="2.8" strokeLinecap="round" /> : null}

@@ -1,5 +1,6 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { syncAllDashboardMetrics } from "../../../lib/facebook-metrics";
+import { jsonUtf8 } from "../../../lib/api-utf8";
 
 function isAuthorized(request: NextRequest) {
   const cronSecret = process.env.CRON_SECRET;
@@ -11,14 +12,14 @@ function isAuthorized(request: NextRequest) {
 
 export async function GET(request: NextRequest) {
   if (!isAuthorized(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    return jsonUtf8({ error: "Unauthorized" }, { status: 401 });
   }
 
   try {
     const summary = await syncAllDashboardMetrics();
-    return NextResponse.json({ ok: true, ...summary });
+    return jsonUtf8({ ok: true, ...summary });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Metrics sync failed";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return jsonUtf8({ error: message }, { status: 500 });
   }
 }

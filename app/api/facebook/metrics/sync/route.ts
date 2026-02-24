@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createClient as createServerSupabaseClient } from "../../../../lib/supabase-server";
 import { supabaseAdmin } from "../../../../lib/supabase-admin";
 import {
@@ -6,6 +6,7 @@ import {
   syncUserLeadsMetrics,
   syncUserPerformanceMonitoring,
 } from "../../../../lib/facebook-metrics";
+import { jsonUtf8 } from "../../../../lib/api-utf8";
 
 export async function POST(request: NextRequest) {
   try {
@@ -16,7 +17,7 @@ export async function POST(request: NextRequest) {
     } = await supabaseServer.auth.getUser();
 
     if (userError || !user) {
-      return NextResponse.json({ error: "Sesion invalida" }, { status: 401 });
+      return jsonUtf8({ error: "Sesion invalida" }, { status: 401 });
     }
 
     const { data: connection, error: connectionError } = await supabaseAdmin
@@ -26,18 +27,18 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
 
     if (connectionError) {
-      return NextResponse.json({ error: connectionError.message }, { status: 500 });
+      return jsonUtf8({ error: connectionError.message }, { status: 500 });
     }
 
     if (!connection?.access_token) {
-      return NextResponse.json({ error: "No hay conexion activa con Facebook" }, { status: 400 });
+      return jsonUtf8({ error: "No hay conexion activa con Facebook" }, { status: 400 });
     }
 
     const scope = request.nextUrl.searchParams.get("scope");
     if (scope === "leads") {
       const leadsSummary = await syncUserLeadsMetrics(user.id, connection.access_token);
       const monitoringSummary = await syncUserPerformanceMonitoring(user.id, connection.access_token);
-      return NextResponse.json({
+      return jsonUtf8({
         ok: true,
         scope: "leads",
         summary: { leads: leadsSummary, monitoring: monitoringSummary },
@@ -45,9 +46,9 @@ export async function POST(request: NextRequest) {
     }
 
     const summary = await syncUserAllMetrics(user.id, connection.access_token);
-    return NextResponse.json({ ok: true, scope: "all", summary });
+    return jsonUtf8({ ok: true, scope: "all", summary });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "No se pudo sincronizar";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return jsonUtf8({ error: message }, { status: 500 });
   }
 }

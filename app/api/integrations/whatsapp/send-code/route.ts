@@ -1,7 +1,7 @@
-import { NextResponse } from "next/server";
 import { createClient as createServerSupabaseClient } from "../../../../lib/supabase-server";
 import { supabaseAdmin } from "../../../../lib/supabase-admin";
 import { generateVerificationCode, normalizeWhatsappNumber, sendWhatsappText } from "../../../../lib/whatsapp";
+import { jsonUtf8, normalizeUtf8Text } from "../../../../lib/api-utf8";
 
 export async function POST(request: Request) {
   try {
@@ -12,14 +12,15 @@ export async function POST(request: Request) {
     } = await supabaseServer.auth.getUser();
 
     if (userError || !user) {
-      return NextResponse.json({ success: false, error: "Sesion invalida" }, { status: 401 });
+      return jsonUtf8({ success: false, error: "Sesion invalida" }, { status: 401 });
     }
 
     const body = (await request.json().catch(() => ({}))) as { number?: string };
-    const number = normalizeWhatsappNumber(body.number || "");
+    const rawNumber = normalizeUtf8Text(body.number || "") as string;
+    const number = normalizeWhatsappNumber(rawNumber);
 
     if (!number || number.length < 8) {
-      return NextResponse.json({ success: false, error: "Numero de WhatsApp invalido" }, { status: 400 });
+      return jsonUtf8({ success: false, error: "Numero de WhatsApp invalido" }, { status: 400 });
     }
 
     const code = generateVerificationCode(4);
@@ -45,9 +46,9 @@ export async function POST(request: Request) {
       throw new Error(upsertError.message);
     }
 
-    return NextResponse.json({ success: true, expires_at: expiresAt });
+    return jsonUtf8({ success: true, expires_at: expiresAt });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Error enviando mensaje";
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return jsonUtf8({ success: false, error: message }, { status: 500 });
   }
 }

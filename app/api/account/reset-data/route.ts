@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { jsonUtf8, normalizeUtf8Text } from "../../../lib/api-utf8";
 import { createClient as createServerSupabaseClient } from "../../../lib/supabase-server";
 import { supabaseAdmin } from "../../../lib/supabase-admin";
 
@@ -43,12 +43,13 @@ export async function POST(request: Request) {
     } = await supabaseServer.auth.getUser();
 
     if (userError || !user) {
-      return NextResponse.json({ error: "Sesion invalida" }, { status: 401 });
+      return jsonUtf8({ error: "Sesion invalida" }, { status: 401 });
     }
 
     const body = (await request.json().catch(() => ({}))) as { confirm?: string };
-    if ((body.confirm || "").trim().toUpperCase() !== "BORRAR") {
-      return NextResponse.json(
+    const confirm = ((normalizeUtf8Text(body.confirm || "") as string) || "").trim().toUpperCase();
+    if (confirm !== "BORRAR") {
+      return jsonUtf8(
         { error: "Confirmacion invalida. Escribe BORRAR para continuar." },
         { status: 400 }
       );
@@ -61,9 +62,9 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ ok: true });
+    return jsonUtf8({ ok: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "No se pudo borrar la data";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return jsonUtf8({ error: message }, { status: 500 });
   }
 }

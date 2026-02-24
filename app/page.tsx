@@ -2,14 +2,22 @@
 
 import Image from "next/image";
 import { useState } from "react";
+import LocaleToggle from "./components/locale-toggle";
+import { localizePublicPath } from "./lib/locale";
+import { useLocale } from "./providers/LocaleProvider";
 
 export default function Home() {
   const [menuOpen, setMenuOpen] = useState(false);
+  const { locale } = useLocale();
+  const isEn = locale === "en";
 
   return (
     <div className="min-h-screen bg-[#f4f6fb] text-[#111827]">
       <div className="border-b border-slate-800 bg-[#071325] px-4 py-1.5 text-center text-xs text-white">
-        <span className="font-semibold">Oferta de lanzamiento:</span> 20% off + hasta 1,000 creditos de IA
+        <span className="font-semibold">
+          {isEn ? "Founding Offer:" : "Oferta de lanzamiento:"}
+        </span>{" "}
+        {isEn ? "20% off + up to 1,000 AI credits" : "20% off + hasta 1,000 creditos de IA"}
       </div>
 
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
@@ -25,12 +33,14 @@ export default function Home() {
             />
           </a>
 
-          <button
-            type="button"
-            className="inline-flex items-center rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700 lg:hidden"
-            onClick={() => setMenuOpen((prev) => !prev)}
-            aria-label="Abrir menu"
-          >
+          <div className="flex items-center gap-2 lg:hidden">
+            <LocaleToggle />
+            <button
+              type="button"
+              className="inline-flex items-center rounded-md border border-slate-300 px-3 py-1.5 text-sm font-medium text-slate-700"
+              onClick={() => setMenuOpen((prev) => !prev)}
+              aria-label={isEn ? "Open menu" : "Abrir menu"}
+            >
             <svg
               xmlns="http://www.w3.org/2000/svg"
               viewBox="0 0 24 24"
@@ -44,33 +54,38 @@ export default function Home() {
               <path d="M3 12h18" />
               <path d="M3 18h18" />
             </svg>
-          </button>
+            </button>
+          </div>
 
           <div className="hidden items-center gap-8 lg:flex">
             <nav className="flex items-center gap-8 text-sm font-medium text-slate-700">
               <a href="#plataforma" className="transition hover:text-[#1D293D]">
-                Plataforma
+                {isEn ? "Platform" : "Plataforma"}
               </a>
               <a href="#como-funciona" className="transition hover:text-[#1D293D]">
-                Como funciona
+                {isEn ? "How it works" : "Como funciona"}
               </a>
               <a href="#blog" className="transition hover:text-[#1D293D]">
                 Blog
               </a>
               <a href="#precios" className="transition hover:text-[#1D293D]">
-                Precios
+                {isEn ? "Pricing" : "Precios"}
               </a>
             </nav>
 
             <div className="flex items-center gap-4">
-              <a href="/signin" className="text-sm font-medium text-slate-700 transition hover:text-[#1D293D]">
-                Iniciar sesion
-              </a>
               <a
-                href="/signup"
+                href={localizePublicPath(locale, "/signin")}
+                className="text-sm font-medium text-slate-700 transition hover:text-[#1D293D]"
+              >
+                {isEn ? "Sign in" : "Iniciar sesion"}
+              </a>
+              <LocaleToggle />
+              <a
+                href={localizePublicPath(locale, "/signup")}
                 className="rounded-xl bg-[#0f1d36] px-5 py-2 text-sm font-semibold text-white transition hover:opacity-90"
               >
-                Probar gratis
+                {isEn ? "Start free trial" : "Probar gratis"}
               </a>
             </div>
           </div>
@@ -79,17 +94,24 @@ export default function Home() {
         {menuOpen && (
           <div className="border-t border-slate-200 bg-white px-4 py-4 lg:hidden">
             <nav className="flex flex-col gap-3 text-sm text-slate-700">
-              <a href="#plataforma">Plataforma</a>
-              <a href="#como-funciona">Como funciona</a>
+              <a href="#plataforma">{isEn ? "Platform" : "Plataforma"}</a>
+              <a href="#como-funciona">{isEn ? "How it works" : "Como funciona"}</a>
               <a href="#blog">Blog</a>
-              <a href="#precios">Precios</a>
+              <a href="#precios">{isEn ? "Pricing" : "Precios"}</a>
             </nav>
             <div className="mt-4 flex gap-3">
-              <a href="/signin" className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium">
-                Iniciar sesion
+              <LocaleToggle />
+              <a
+                href={localizePublicPath(locale, "/signin")}
+                className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium"
+              >
+                {isEn ? "Sign in" : "Iniciar sesion"}
               </a>
-              <a href="/signup" className="rounded-lg bg-[#0f1d36] px-4 py-2 text-sm font-semibold text-white">
-                Probar gratis
+              <a
+                href={localizePublicPath(locale, "/signup")}
+                className="rounded-lg bg-[#0f1d36] px-4 py-2 text-sm font-semibold text-white"
+              >
+                {isEn ? "Start free trial" : "Probar gratis"}
               </a>
             </div>
           </div>
@@ -102,57 +124,77 @@ export default function Home() {
         <section className="relative mx-auto w-full max-w-6xl px-4 pb-16 pt-16 sm:px-6 lg:px-8 lg:pt-24">
           <div className="mx-auto flex max-w-4xl flex-col items-center text-center">
             <span className="inline-flex items-center rounded-full border border-blue-100 bg-blue-50 px-4 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">
-              Encuentra anuncios ganadores mas rapido
+              {isEn ? "Find winning ads faster" : "Encuentra anuncios ganadores mas rapido"}
             </span>
             <h1 className="mt-7 text-4xl font-semibold leading-tight text-[#0f172a] sm:text-5xl lg:text-7xl">
-              Agentes IA que lanzan 100+ variaciones en Meta en segundos.
+              {isEn
+                ? "AI agents that launch 100+ Meta ad variations in seconds."
+                : "Agentes IA que lanzan 100+ variaciones en Meta en segundos."}
             </h1>
             <p className="mt-4 bg-gradient-to-r from-blue-600 to-violet-600 bg-clip-text text-4xl font-semibold leading-tight text-transparent sm:text-5xl lg:text-7xl">
-              Construido desde tus ganadores reales.
+              {isEn ? "Built from your proven winners." : "Construido desde tus ganadores reales."}
             </p>
             <p className="mt-8 max-w-3xl text-lg leading-relaxed text-slate-600">
-              OMNI Scale analiza campañas historicas, ordena creativos, copies y audiencias por rendimiento, y activa combinaciones optimizadas de forma automatica.
+              {isEn
+                ? "OMNI Scale analyzes historical campaigns, ranks creatives, copy, and audiences by performance, and automatically activates optimized combinations."
+                : "OMNI Scale analiza campañas historicas, ordena creativos, copies y audiencias por rendimiento, y activa combinaciones optimizadas de forma automatica."}
             </p>
             <div className="mt-9 flex flex-col gap-3 sm:flex-row">
               <a
-                href="/signup"
+                href={localizePublicPath(locale, "/signup")}
                 className="rounded-xl bg-[#0f1d36] px-8 py-3 text-base font-semibold text-white transition hover:opacity-90"
               >
-                Empezar con IA
+                {isEn ? "Start with AI" : "Empezar con IA"}
               </a>
               <a
-                href="/signin"
+                href={localizePublicPath(locale, "/signin")}
                 className="rounded-xl border border-slate-300 bg-white px-8 py-3 text-base font-semibold text-slate-700 transition hover:bg-slate-50"
               >
-                Ya tengo cuenta
+                {isEn ? "I already have an account" : "Ya tengo cuenta"}
               </a>
             </div>
           </div>
         </section>
 
         <section id="como-funciona" className="relative mx-auto w-full max-w-6xl px-4 pb-16 sm:px-6 lg:px-8">
-          <h2 className="text-center text-4xl font-semibold text-[#0f172a] sm:text-5xl">Como funciona</h2>
+          <h2 className="text-center text-4xl font-semibold text-[#0f172a] sm:text-5xl">
+            {isEn ? "How it works" : "Como funciona"}
+          </h2>
           <p className="mx-auto mt-4 max-w-3xl text-center text-lg text-slate-600">
-            Desde importar datos hasta lanzar campañas con IA en minutos.
+            {isEn
+              ? "From importing your data to launching AI campaigns in minutes."
+              : "Desde importar datos hasta lanzar campañas con IA en minutos."}
           </p>
 
           <div className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-3">
             <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h3 className="text-2xl font-semibold text-[#0f172a]">Importa y rankea</h3>
+              <h3 className="text-2xl font-semibold text-[#0f172a]">
+                {isEn ? "Import and rank" : "Importa y rankea"}
+              </h3>
               <p className="mt-3 text-base leading-relaxed text-slate-600">
-                Traemos data historica y rankeamos cada elemento publicitario por ROAS y conversiones.
+                {isEn
+                  ? "We pull historical data and rank each ad component by ROAS and conversions."
+                  : "Traemos data historica y rankeamos cada elemento publicitario por ROAS y conversiones."}
               </p>
             </article>
             <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h3 className="text-2xl font-semibold text-[#0f172a]">Construye campañas</h3>
+              <h3 className="text-2xl font-semibold text-[#0f172a]">
+                {isEn ? "Build campaigns" : "Construye campañas"}
+              </h3>
               <p className="mt-3 text-base leading-relaxed text-slate-600">
-                La IA arma estructuras de campaña con audiencias, copies y creativos listos para escalar.
+                {isEn
+                  ? "AI builds campaign structures with audiences, copy, and creatives ready to scale."
+                  : "La IA arma estructuras de campaña con audiencias, copies y creativos listos para escalar."}
               </p>
             </article>
             <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h3 className="text-2xl font-semibold text-[#0f172a]">Lanza y aprende</h3>
+              <h3 className="text-2xl font-semibold text-[#0f172a]">
+                {isEn ? "Launch and learn" : "Lanza y aprende"}
+              </h3>
               <p className="mt-3 text-base leading-relaxed text-slate-600">
-                Lanzas variaciones en Meta y el sistema aprende en tiempo real para mejorar resultados.
+                {isEn
+                  ? "Launch ad variations in Meta and let the system learn in real time."
+                  : "Lanzas variaciones en Meta y el sistema aprende en tiempo real para mejorar resultados."}
               </p>
             </article>
           </div>
@@ -163,31 +205,51 @@ export default function Home() {
             <div className="space-y-7">
               <FeatureItem
                 icon={<ChartBarIcon className="h-6 w-6 text-white" />}
-                title="Analiza tu data historica"
-                description="La IA evalua cada creativo, copy y audiencia con base en rendimiento real."
+                title={isEn ? "Analyze your historical data" : "Analiza tu data historica"}
+                description={
+                  isEn
+                    ? "AI scores each creative, copy and audience using real account performance."
+                    : "La IA evalua cada creativo, copy y audiencia con base en rendimiento real."
+                }
               />
               <FeatureItem
                 icon={<FlaskIcon className="h-6 w-6 text-white" />}
-                title="Construye estructuras completas"
-                description="Selecciona elementos top y genera campañas con ad sets y targets optimizados."
+                title={isEn ? "Build complete structures" : "Construye estructuras completas"}
+                description={
+                  isEn
+                    ? "Select top elements and generate campaigns with optimized ad sets and targeting."
+                    : "Selecciona elementos top y genera campañas con ad sets y targets optimizados."
+                }
               />
               <FeatureItem
                 icon={<BulbIcon className="h-6 w-6 text-white" />}
-                title="Explica cada decision"
-                description="Transparencia total sobre por que cada creativo y audiencia fue elegida."
+                title={isEn ? "Explain every decision" : "Explica cada decision"}
+                description={
+                  isEn
+                    ? "Full transparency on why each creative and audience was chosen."
+                    : "Transparencia total sobre por que cada creativo y audiencia fue elegida."
+                }
               />
               <FeatureItem
                 icon={<RefreshIcon className="h-6 w-6 text-white" />}
-                title="Aprendizaje continuo"
-                description="Cada resultado nuevo mejora al sistema para que tu siguiente campaña rinda mejor."
+                title={isEn ? "Continuous learning" : "Aprendizaje continuo"}
+                description={
+                  isEn
+                    ? "Every new result trains the system so your next campaign performs better."
+                    : "Cada resultado nuevo mejora al sistema para que tu siguiente campaña rinda mejor."
+                }
               />
             </div>
 
             <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
               <div className="rounded-2xl bg-gradient-to-r from-[#101f38] to-[#1f2f4f] p-4 text-white">
                 <div className="flex items-center justify-between">
-                  <p className="text-xl font-semibold">Resumen de campaña IA</p>
-                  <div className="rounded-lg bg-white/15 px-3 py-1 text-[11px] font-semibold">Resumen</div>
+                  <p className="text-xl font-semibold">
+                    {isEn ? "AI Campaign Summary" : "Resumen de campaña IA"}
+                  </p>
+                  <div className="rounded-lg bg-white/15 px-3 py-1 text-[11px] font-semibold">
+                    {isEn ? "Summary" : "Resumen"}
+                  </div>
                 </div>
               </div>
 
@@ -195,18 +257,24 @@ export default function Home() {
                 <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-violet-600 text-white">
                   <SparklesIcon className="h-6 w-6 text-white" />
                 </div>
-                <h4 className="mt-3 text-3xl font-semibold text-[#0f172a] sm:text-4xl">Tu campaña IA esta lista</h4>
-                <p className="mt-2 text-base text-slate-600">Revisa la estrategia y valida cada seccion.</p>
+                <h4 className="mt-3 text-3xl font-semibold text-[#0f172a] sm:text-4xl">
+                  {isEn ? "Your AI campaign is ready" : "Tu campaña IA esta lista"}
+                </h4>
+                <p className="mt-2 text-base text-slate-600">
+                  {isEn ? "Review the strategy and validate each section." : "Revisa la estrategia y valida cada seccion."}
+                </p>
               </div>
 
               <div className="mt-4 grid grid-cols-3 gap-3">
-                <StatCard value="LEADS" label="Objetivo" />
+                <StatCard value="LEADS" label={isEn ? "Objective" : "Objetivo"} />
                 <StatCard value="10" label="Ad Sets" />
                 <StatCard value="60" label="Ads" />
               </div>
 
               <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                <p className="text-xl font-semibold text-emerald-800">Construido con ganadores probados</p>
+                <p className="text-xl font-semibold text-emerald-800">
+                  {isEn ? "Built with proven winners" : "Construido con ganadores probados"}
+                </p>
                 <div className="mt-3 grid grid-cols-3 gap-3">
                   <MiniStat value="$90.46" label="avg CPA" />
                   <MiniStat value="$116.13" label="avg CPA" />
@@ -219,28 +287,54 @@ export default function Home() {
 
         <section className="relative mx-auto w-full max-w-6xl px-4 pb-20 sm:px-6 lg:px-8">
           <h2 className="text-center text-4xl font-semibold text-[#0f172a] sm:text-5xl">
-            Controla como la IA construye tus campañas
+            {isEn ? "Control how AI builds your campaigns" : "Controla como la IA construye tus campañas"}
           </h2>
           <p className="mx-auto mt-4 max-w-4xl text-center text-lg leading-relaxed text-slate-600">
-            Define si la IA prioriza ganadores, explora ideas nuevas o combina ambos enfoques.
+            {isEn
+              ? "Decide whether AI focuses on winners, explores new ideas, or blends both."
+              : "Define si la IA prioriza ganadores, explora ideas nuevas o combina ambos enfoques."}
           </p>
 
           <div className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-2">
             <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h3 className="text-2xl font-semibold text-[#0f172a]">Estrategia de audiencia</h3>
+              <h3 className="text-2xl font-semibold text-[#0f172a]">
+                {isEn ? "Audience strategy" : "Estrategia de audiencia"}
+              </h3>
               <div className="mt-5 space-y-3">
-                <OptionCard title="Conservadora" subtitle="Solo audiencias con mejor rendimiento" />
-                <OptionCard title="Balanceada" subtitle="Ganadores + audiencias nuevas" />
-                <OptionCard title="Experimental" subtitle="Prueba audiencias nuevas" active="violet" />
+                <OptionCard
+                  title={isEn ? "Conservative" : "Conservadora"}
+                  subtitle={isEn ? "Only top-performing audiences" : "Solo audiencias con mejor rendimiento"}
+                />
+                <OptionCard
+                  title={isEn ? "Balanced" : "Balanceada"}
+                  subtitle={isEn ? "Winners + new audiences" : "Ganadores + audiencias nuevas"}
+                />
+                <OptionCard
+                  title={isEn ? "Experimental" : "Experimental"}
+                  subtitle={isEn ? "Test new audiences" : "Prueba audiencias nuevas"}
+                  active="violet"
+                />
               </div>
             </article>
 
             <article className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h3 className="text-2xl font-semibold text-[#0f172a]">Estrategia de copy y creativo</h3>
+              <h3 className="text-2xl font-semibold text-[#0f172a]">
+                {isEn ? "Copy and creative strategy" : "Estrategia de copy y creativo"}
+              </h3>
               <div className="mt-5 space-y-3">
-                <OptionCard title="Conservadora" subtitle="Copy y creativos probados" />
-                <OptionCard title="Balanceada" subtitle="Top creativos + copy nuevo" active="blue" />
-                <OptionCard title="Experimental" subtitle="Genera copy totalmente nuevo" />
+                <OptionCard
+                  title={isEn ? "Conservative" : "Conservadora"}
+                  subtitle={isEn ? "Proven copy and creatives" : "Copy y creativos probados"}
+                />
+                <OptionCard
+                  title={isEn ? "Balanced" : "Balanceada"}
+                  subtitle={isEn ? "Top creatives + fresh copy" : "Top creativos + copy nuevo"}
+                  active="blue"
+                />
+                <OptionCard
+                  title={isEn ? "Experimental" : "Experimental"}
+                  subtitle={isEn ? "Generate fully new copy" : "Genera copy totalmente nuevo"}
+                />
               </div>
             </article>
           </div>
@@ -249,17 +343,17 @@ export default function Home() {
 
       <footer className="border-t border-slate-200 bg-white">
         <div className="mx-auto w-full max-w-6xl px-4 py-6 text-center text-xs text-slate-600 sm:px-6 lg:px-8">
-          <p>Derechos reservados</p>
+          <p className="mt-1">{isEn ? "All rights reserved" : "Derechos reservados"}</p>
           <p className="mt-1">OMNI AGENCIA S.A.C - RUC 20612101648</p>
           <div className="mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
-            <a href="/terms-and-conditions" className="underline hover:text-slate-900">
-              Terminos y Condiciones
+            <a href={localizePublicPath(locale, "/terms-and-conditions")} className="underline hover:text-slate-900">
+              {isEn ? "Terms and Conditions" : "Terminos y Condiciones"}
             </a>
-            <a href="/privacy-policy" className="underline hover:text-slate-900">
-              Politica de Privacidad
+            <a href={localizePublicPath(locale, "/privacy-policy")} className="underline hover:text-slate-900">
+              {isEn ? "Privacy Policy" : "Politica de Privacidad"}
             </a>
-            <a href="/data-deletion-policy" className="underline hover:text-slate-900">
-              Politica de Eliminacion de Datos
+            <a href={localizePublicPath(locale, "/data-deletion-policy")} className="underline hover:text-slate-900">
+              {isEn ? "Data Deletion Policy" : "Politica de Eliminacion de Datos"}
             </a>
           </div>
         </div>

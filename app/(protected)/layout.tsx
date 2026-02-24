@@ -4,6 +4,10 @@ import Link from "next/link";
 import { useEffect, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "../lib/supabaseClient";
+import ThemeToggle from "../components/theme-toggle";
+import { localizePublicPath } from "../lib/locale";
+import { useLocale } from "../providers/LocaleProvider";
+import { useTheme } from "../providers/ThemeProvider";
 
 type NavItem = {
   href: string;
@@ -72,6 +76,35 @@ const NAV_SECTIONS: NavSection[] = [
     ],
   },
 ];
+
+const SECTION_TITLE_I18N: Record<string, { es: string; en: string }> = {
+  Campañas: { es: "Campañas", en: "Campaigns" },
+  Studio: { es: "Studio", en: "Studio" },
+  Insights: { es: "Insights", en: "Insights" },
+  Assets: { es: "Assets", en: "Assets" },
+  Automatizacion: { es: "Automatización", en: "Automation" },
+};
+
+const ITEM_LABEL_I18N: Record<string, { es: string; en: string }> = {
+  Onboarding: { es: "Onboarding", en: "Onboarding" },
+  Dashboard: { es: "Dashboard", en: "Dashboard" },
+  "Scale AI": { es: "Scale AI", en: "Scale AI" },
+  Leads: { es: "Leads", en: "Leads" },
+  Ventas: { es: "Ventas", en: "Sales" },
+  Mensajes: { es: "Mensajes", en: "Messages" },
+  Branding: { es: "Branding", en: "Branding" },
+  Creativos: { es: "Creativos", en: "Creatives" },
+  Audiencias: { es: "Audiencias", en: "Audiences" },
+  Multimedia: { es: "Multimedia", en: "Media" },
+  Rendimiento: { es: "Rendimiento", en: "Performance" },
+  "Top Ads": { es: "Top Ads", en: "Top Ads" },
+  "Facebook conexión": { es: "Facebook conexión", en: "Facebook connection" },
+  "Mi negocio": { es: "Mi negocio", en: "My business" },
+  Integraciones: { es: "Integraciones", en: "Integrations" },
+  Comentarios: { es: "Comentarios", en: "Comments" },
+  "Reglas básicas": { es: "Reglas básicas", en: "Basic rules" },
+  Conversacional: { es: "Conversacional", en: "Conversational" },
+};
 
 function MenuIconWrap({ children }: { children: ReactNode }) {
   return (
@@ -277,12 +310,14 @@ export default function ProtectedLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const { locale, setLocale } = useLocale();
+  const { theme, setTheme } = useTheme();
   const router = useRouter();
   const pathname = usePathname();
   const [loading, setLoading] = useState(true);
   const [showMenuScrollbar, setShowMenuScrollbar] = useState(false);
   const [profile, setProfile] = useState<SidebarProfile>({
-    name: "Usuario",
+    name: locale === "en" ? "User" : "Usuario",
     email: "",
     avatarUrl: null,
   });
@@ -305,27 +340,40 @@ export default function ProtectedLayout({
       }
     };
 
-    const ensureReportingTimezone = async (user: {
+    const ensureUserPreferences = async (user: {
       id: string;
       email?: string | null;
       user_metadata?: { full_name?: string; name?: string };
     }) => {
       const { data: profileRow, error: profileError } = await supabase
         .from("profiles")
-        .select("timezone_name")
+        .select("*")
         .eq("id", user.id)
         .maybeSingle();
 
       if (profileError) return;
 
       const existingTimezone = (profileRow?.timezone_name as string | null) || "";
-      if (existingTimezone.trim()) return;
+      const existingLocale = (profileRow?.language_code as string | null) || "";
+      const existingTheme = (profileRow?.theme_mode as string | null) || "";
+
+      if (existingLocale === "es" || existingLocale === "en") {
+        setLocale(existingLocale);
+      }
+      if (existingTheme === "dark" || existingTheme === "light") {
+        setTheme(existingTheme);
+      }
+
+      const hasTimezone = Boolean(existingTimezone.trim());
+      const hasLocale = existingLocale === "es" || existingLocale === "en";
+      const hasTheme = existingTheme === "dark" || existingTheme === "light";
+      if (hasTimezone && hasLocale && hasTheme) return;
 
       const fullName =
         (user.user_metadata?.full_name as string | undefined) ||
         (user.user_metadata?.name as string | undefined) ||
         user.email?.split("@")[0] ||
-        "Usuario";
+        locale === "en" ? "User" : "Usuario";
 
       const timezoneName = detectBrowserTimezone();
       await supabase.from("profiles").upsert(
@@ -333,7 +381,9 @@ export default function ProtectedLayout({
           id: user.id,
           email: user.email || null,
           name: fullName,
-          timezone_name: timezoneName,
+          timezone_name: hasTimezone ? existingTimezone : timezoneName,
+          language_code: locale,
+          theme_mode: theme,
         },
         { onConflict: "id" }
       );
@@ -359,13 +409,13 @@ export default function ProtectedLayout({
       const { data, error } = await supabase.auth.getSession();
 
       if (error || !data.session) {
-        router.replace("/signin");
+        router.replace(localizePublicPath(locale, "/signin"));
         return;
       }
 
       const user = data.session.user;
       setProfile(mapUserProfile(user));
-      await ensureReportingTimezone({
+      await ensureUserPreferences({
         id: user.id,
         email: user.email,
         user_metadata: user.user_metadata as { full_name?: string; name?: string },
@@ -384,10 +434,14 @@ export default function ProtectedLayout({
     return () => {
       authSubscription.subscription.unsubscribe();
     };
-  }, [router]);
+  }, [router, locale, setLocale, theme, setTheme]);
 
   if (loading) {
-    return <div className="flex h-screen items-center justify-center">Cargando...</div>;
+    return (
+      <div className="flex h-screen items-center justify-center">
+        {locale === "en" ? "Loading..." : "Cargando..."}
+      </div>
+    );
   }
 
   const initials = profile.name
@@ -402,7 +456,10 @@ export default function ProtectedLayout({
       <div className="min-h-screen">
         <aside className="fixed left-0 top-0 z-30 flex h-screen w-[250px] shrink-0 flex-col border-r border-slate-200 bg-white">
           <div className="shrink-0 border-b border-slate-200 px-5 py-4">
-            <h1 className="text-2xl font-bold text-[#111827]">OMNI Scale</h1>
+            <div className="flex items-center justify-between gap-2">
+              <h1 className="text-2xl font-bold text-[#111827]">OMNI Scale</h1>
+              <ThemeToggle />
+            </div>
           </div>
 
           <div
@@ -417,7 +474,7 @@ export default function ProtectedLayout({
                 <div key={section.title}>
                   {section.title ? (
                     <p className="px-2 text-xs font-semibold uppercase tracking-wide text-slate-400">
-                      {section.title}
+                      {SECTION_TITLE_I18N[section.title]?.[locale] || section.title}
                     </p>
                   ) : null}
                   <nav className="mt-1.5 space-y-0.5">
@@ -432,7 +489,7 @@ export default function ProtectedLayout({
                         }`}
                       >
                         {item.icon}
-                        <span>{item.label}</span>
+                        <span>{ITEM_LABEL_I18N[item.label]?.[locale] || item.label}</span>
                       </Link>
                     ))}
                   </nav>
@@ -453,7 +510,7 @@ export default function ProtectedLayout({
               {profile.avatarUrl ? (
                 <img
                   src={profile.avatarUrl}
-                  alt="Foto de perfil"
+                  alt={locale === "en" ? "Profile picture" : "Foto de perfil"}
                   className="h-9 w-9 shrink-0 rounded-full border border-slate-200 object-cover"
                 />
               ) : (

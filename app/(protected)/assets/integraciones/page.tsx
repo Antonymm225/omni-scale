@@ -186,7 +186,7 @@ export default function IntegracionesPage() {
 
     const response = await fetch("/api/integrations/whatsapp/send-code", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json; charset=utf-8" },
       body: JSON.stringify({ number: clean }),
     });
     const payload = (await response.json().catch(() => ({}))) as { success?: boolean; error?: string };
@@ -221,7 +221,7 @@ export default function IntegracionesPage() {
 
     const response = await fetch("/api/integrations/whatsapp/verify-code", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json; charset=utf-8" },
       body: JSON.stringify({ number: clean, code }),
     });
     const payload = (await response.json().catch(() => ({}))) as { success?: boolean; error?: string };

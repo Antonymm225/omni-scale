@@ -45,7 +45,7 @@ export async function sendWhatsappText(params: SendWhatsappTextParams) {
   const response = await fetch(`https://wevoapi.omniagencia.com/message/sendText/${instance}`, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
+      "Content-Type": "application/json; charset=utf-8",
       apikey: apiKey,
     },
     body: JSON.stringify({

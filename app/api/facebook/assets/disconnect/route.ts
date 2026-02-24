@@ -1,6 +1,6 @@
-﻿import { NextResponse } from "next/server";
 import { createClient as createServerSupabaseClient } from "../../../../lib/supabase-server";
 import { supabaseAdmin } from "../../../../lib/supabase-admin";
+import { jsonUtf8 } from "../../../../lib/api-utf8";
 
 const FACEBOOK_TABLES = [
   "facebook_sales_timeseries",
@@ -53,13 +53,13 @@ export async function POST() {
     } = await supabaseServer.auth.getUser();
 
     if (error || !user) {
-      return NextResponse.json({ error: "Sesion invalida" }, { status: 401 });
+      return jsonUtf8({ error: "Sesion invalida" }, { status: 401 });
     }
 
     await clearFacebookData(user.id);
-    return NextResponse.json({ ok: true });
+    return jsonUtf8({ ok: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "No se pudo desconectar Facebook";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return jsonUtf8({ error: message }, { status: 500 });
   }
 }
