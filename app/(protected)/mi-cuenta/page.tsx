@@ -45,6 +45,12 @@ const TIMEZONE_OPTIONS = [
 export default function Page() {
   const router = useRouter();
   const [uploading, setUploading] = useState(false);
+  const [resettingData, setResettingData] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [resetConfirm, setResetConfirm] = useState("");
+  const [deleteConfirm, setDeleteConfirm] = useState("");
+  const [showDeleteAccountBox, setShowDeleteAccountBox] = useState(false);
+  const [deleteCountdown, setDeleteCountdown] = useState(0);
   const [notice, setNotice] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [profile, setProfile] = useState<ProfileState>({
@@ -85,6 +91,26 @@ export default function Page() {
 
     void loadProfile();
   }, []);
+
+  useEffect(() => {
+    if (!showDeleteAccountBox) {
+      setDeleteCountdown(0);
+      return;
+    }
+
+    setDeleteCountdown(5);
+    const timer = window.setInterval(() => {
+      setDeleteCountdown((prev) => {
+        if (prev <= 1) {
+          window.clearInterval(timer);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [showDeleteAccountBox]);
 
   const initials = profile.name
     .split(" ")
@@ -188,6 +214,83 @@ export default function Page() {
     }
   };
 
+  const handleResetData = async () => {
+    setError(null);
+    setNotice(null);
+
+    if (resetConfirm.trim().toUpperCase() !== "BORRAR") {
+      setError('Escribe "BORRAR" para confirmar el borrado total.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Esta accion borrara toda tu data y reiniciara tu workspace. ¿Deseas continuar?"
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setResettingData(true);
+    try {
+      const response = await fetch("/api/account/reset-data", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: resetConfirm }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "No se pudo borrar la data.");
+      }
+
+      setNotice("Se borraron tus datos. Redirigiendo a setup...");
+      setTimeout(() => {
+        router.replace("/setup/business-type");
+      }, 700);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "No se pudo borrar la data.");
+    } finally {
+      setResettingData(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    setError(null);
+    setNotice(null);
+
+    if (deleteConfirm.trim().toUpperCase() !== "ELIMINAR") {
+      setError('Escribe "ELIMINAR" para confirmar la eliminación de la cuenta.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      "Tu cuenta se eliminara de inmediato y no quedara data ni acceso. Esta accion no se puede deshacer. ¿Continuar?"
+    );
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingAccount(true);
+    try {
+      const response = await fetch("/api/account/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirm: deleteConfirm }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload.error || "No se pudo eliminar la cuenta.");
+      }
+
+      await supabase.auth.signOut();
+      router.replace("/signup");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "No se pudo eliminar la cuenta.");
+      setDeletingAccount(false);
+    }
+  };
+
   return (
     <main className="min-h-screen bg-[#f3f5f9] px-4 py-10 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-5xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-10">
@@ -251,6 +354,50 @@ export default function Page() {
             Cerrar sesión
           </button>
         </div>
+        <div className="mt-2 flex justify-end">
+          <button
+            type="button"
+            onClick={() => setShowDeleteAccountBox((prev) => !prev)}
+            className="text-xs text-slate-500 underline decoration-transparent underline-offset-2 transition hover:text-red-600 hover:decoration-red-300"
+          >
+            Eliminar cuenta
+          </button>
+        </div>
+
+        {showDeleteAccountBox ? (
+          <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-4">
+            <p className="text-sm font-semibold text-red-700">Eliminar cuenta permanentemente</p>
+            <p className="mt-1 text-xs text-red-700">
+              El borrado es inmediato. Se eliminará tu cuenta y no quedará data, accesos ni credenciales.
+            </p>
+            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <input
+                type="text"
+                value={deleteConfirm}
+                onChange={(event) => setDeleteConfirm(event.target.value)}
+                placeholder='Escribe "ELIMINAR"'
+                className="w-full rounded-lg border border-red-300 bg-white px-3 py-2 text-sm text-red-700 outline-none ring-red-300 focus:ring-2 sm:max-w-xs"
+              />
+              <button
+                type="button"
+                onClick={handleDeleteAccount}
+                disabled={deletingAccount || deleteCountdown > 0}
+                className="inline-flex items-center justify-center rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {deletingAccount
+                  ? "Eliminando..."
+                  : deleteCountdown > 0
+                    ? `Espera ${deleteCountdown}s`
+                    : "Eliminar cuenta ahora"}
+              </button>
+            </div>
+            {deleteCountdown > 0 ? (
+              <p className="mt-2 text-xs text-red-700">
+                Medida de seguridad activa. Podrás confirmar en {deleteCountdown}s.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
 
         <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
           <p className="text-sm font-semibold text-[#111827]">Facturación y plan</p>
@@ -292,6 +439,31 @@ export default function Page() {
               className="inline-flex items-center justify-center rounded-lg bg-[#1D293D] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {savingTimezone ? "Guardando..." : "Guardar zona horaria"}
+            </button>
+          </div>
+        </div>
+
+        <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 sm:p-5">
+          <p className="text-sm font-semibold text-red-700">Zona de peligro</p>
+          <p className="mt-1 text-xs text-red-600">
+            Borra toda tu data de OMNI Scale (assets, métricas, onboarding e integraciones) y reinicia desde cero
+            como cuenta recién creada.
+          </p>
+          <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+            <input
+              type="text"
+              value={resetConfirm}
+              onChange={(event) => setResetConfirm(event.target.value)}
+              placeholder='Escribe "BORRAR"'
+              className="w-full rounded-lg border border-red-300 bg-white px-3 py-2 text-sm text-red-700 outline-none ring-red-300 focus:ring-2 sm:max-w-xs"
+            />
+            <button
+              type="button"
+              onClick={handleResetData}
+              disabled={resettingData}
+              className="inline-flex items-center justify-center rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {resettingData ? "Borrando..." : "Borrar data completa"}
             </button>
           </div>
         </div>
