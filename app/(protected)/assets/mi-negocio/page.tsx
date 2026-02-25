@@ -1,7 +1,8 @@
-"use client";
+﻿"use client";
 
 import { FormEvent, useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import { useLocale } from "../../../providers/LocaleProvider";
 
 type BusinessForm = {
   company_name: string;
@@ -11,6 +12,8 @@ type BusinessForm = {
 };
 
 export default function MiNegocioPage() {
+  const { locale } = useLocale();
+  const isEn = locale === "en";
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +35,7 @@ export default function MiNegocioPage() {
         error: userError,
       } = await supabase.auth.getUser();
       if (userError || !user) {
-        setError("No se pudo validar la sesion.");
+        setError(isEn ? "Could not validate session." : "No se pudo validar la sesion.");
         setLoading(false);
         return;
       }
@@ -76,7 +79,7 @@ export default function MiNegocioPage() {
     };
 
     void load();
-  }, []);
+  }, [isEn]);
 
   const handleSave = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -89,7 +92,7 @@ export default function MiNegocioPage() {
       error: userError,
     } = await supabase.auth.getUser();
     if (userError || !user) {
-      setError("No se pudo validar la sesion.");
+      setError(isEn ? "Could not validate session." : "No se pudo validar la sesion.");
       setSaving(false);
       return;
     }
@@ -125,7 +128,7 @@ export default function MiNegocioPage() {
       }
     }
 
-    setNotice("Datos del negocio guardados correctamente.");
+    setNotice(isEn ? "Business data saved successfully." : "Datos del negocio guardados correctamente.");
     setSaving(false);
   };
 
@@ -133,9 +136,11 @@ export default function MiNegocioPage() {
     <main className="px-4 py-8 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-4xl">
         <header>
-          <h1 className="text-3xl font-bold text-[#111827] sm:text-4xl">Mi negocio</h1>
+          <h1 className="text-3xl font-bold text-[#111827] sm:text-4xl">{isEn ? "My business" : "Mi negocio"}</h1>
           <p className="mt-2 text-sm text-slate-600">
-            Este contexto se usará para personalizar recomendaciones y respuestas del modelo.
+            {isEn
+              ? "This context is used to personalize model recommendations and responses."
+              : "Este contexto se usará para personalizar recomendaciones y respuestas del modelo."}
           </p>
         </header>
 
@@ -148,13 +153,13 @@ export default function MiNegocioPage() {
 
         <form onSubmit={handleSave} className="mt-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
           {loading ? (
-            <p className="text-sm text-slate-500">Cargando datos...</p>
+            <p className="text-sm text-slate-500">{isEn ? "Loading data..." : "Cargando datos..."}</p>
           ) : (
             <div className="space-y-5">
               <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                 <label className="block">
                   <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Nombre del negocio
+                    {isEn ? "Business name" : "Nombre del negocio"}
                   </span>
                   <input
                     type="text"
@@ -163,14 +168,14 @@ export default function MiNegocioPage() {
                       setForm((prev) => ({ ...prev, company_name: event.target.value }))
                     }
                     className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#1D293D]"
-                    placeholder="Ej: OMNI Agencia"
+                    placeholder={isEn ? "Ex: OMNI Agency" : "Ej: OMNI Agencia"}
                     required
                   />
                 </label>
 
                 <label className="block">
                   <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Tipo de negocio
+                    {isEn ? "Business type" : "Tipo de negocio"}
                   </span>
                   <select
                     value={form.business_type}
@@ -181,17 +186,17 @@ export default function MiNegocioPage() {
                     required
                   >
                     <option value="" disabled>
-                      Selecciona tipo
+                      {isEn ? "Select type" : "Selecciona tipo"}
                     </option>
-                    <option value="Marca">Marca</option>
-                    <option value="Agencia">Agencia</option>
+                    <option value="Marca">{isEn ? "Brand" : "Marca"}</option>
+                    <option value="Agencia">{isEn ? "Agency" : "Agencia"}</option>
                   </select>
                 </label>
               </div>
 
               <label className="block">
                 <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Descripción de la empresa
+                  {isEn ? "Company description" : "Descripción de la empresa"}
                 </span>
                 <textarea
                   value={form.business_description}
@@ -199,14 +204,18 @@ export default function MiNegocioPage() {
                     setForm((prev) => ({ ...prev, business_description: event.target.value }))
                   }
                   className="min-h-[120px] w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#1D293D]"
-                  placeholder="Describe tu propuesta de valor, nicho, ticket promedio y mercado."
+                  placeholder={
+                    isEn
+                      ? "Describe your value proposition, niche, average ticket, and market."
+                      : "Describe tu propuesta de valor, nicho, ticket promedio y mercado."
+                  }
                   required
                 />
               </label>
 
               <label className="block">
                 <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Objetivos de la empresa
+                  {isEn ? "Business goals" : "Objetivos de la empresa"}
                 </span>
                 <textarea
                   value={form.business_goals}
@@ -214,7 +223,11 @@ export default function MiNegocioPage() {
                     setForm((prev) => ({ ...prev, business_goals: event.target.value }))
                   }
                   className="min-h-[120px] w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#1D293D]"
-                  placeholder="Ej: aumentar leads calificados, mejorar ROAS, escalar campañas."
+                  placeholder={
+                    isEn
+                      ? "Ex: increase qualified leads, improve ROAS, scale campaigns."
+                      : "Ej: aumentar leads calificados, mejorar ROAS, escalar campañas."
+                  }
                   required
                 />
               </label>
@@ -224,7 +237,7 @@ export default function MiNegocioPage() {
                 disabled={saving}
                 className="inline-flex items-center justify-center rounded-lg bg-[#1D293D] px-5 py-2.5 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {saving ? "Guardando..." : "Guardar"}
+                {saving ? (isEn ? "Saving..." : "Guardando...") : isEn ? "Save" : "Guardar"}
               </button>
             </div>
           )}

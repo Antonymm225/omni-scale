@@ -1,7 +1,8 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import { useLocale } from "../../../providers/LocaleProvider";
 
 type PerfEntityType = "account" | "campaign" | "adset" | "ad";
 type Trend = "improving" | "stable" | "worsening";
@@ -46,6 +47,9 @@ type AiRunRow = {
 };
 
 export default function RendimientoPage() {
+  const { locale } = useLocale();
+  const isEn = locale === "en";
+
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +72,7 @@ export default function RendimientoPage() {
       error: userError,
     } = await supabase.auth.getUser();
     if (userError || !user) {
-      setError("No se pudo validar la sesión.");
+      setError(isEn ? "Could not validate session." : "No se pudo validar la sesión.");
       setLoading(false);
       return;
     }
@@ -114,96 +118,88 @@ export default function RendimientoPage() {
       const response = await fetch("/api/facebook/metrics/sync", { method: "POST" });
       const payload = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
       if (!response.ok || !payload.ok) {
-        throw new Error(payload.error || "No se pudo sincronizar.");
+        throw new Error(payload.error || (isEn ? "Could not sync." : "No se pudo sincronizar."));
       }
-      setNotice("Monitoreo actualizado correctamente.");
+      setNotice(isEn ? "Monitoring updated successfully." : "Monitoreo actualizado correctamente.");
       await loadData();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "No se pudo sincronizar.");
+      setError(err instanceof Error ? err.message : isEn ? "Could not sync." : "No se pudo sincronizar.");
     } finally {
       setSyncing(false);
     }
   };
 
-  const accountRows = useMemo(
-    () => {
-      const directAccounts = rows.filter((row) => row.entity_type === "account" && Number(row.spend_usd || 0) > 0);
-      if (directAccounts.length > 0) return directAccounts;
+  const accountRows = useMemo(() => {
+    const directAccounts = rows.filter((row) => row.entity_type === "account" && Number(row.spend_usd || 0) > 0);
+    if (directAccounts.length > 0) return directAccounts;
 
-      // Fallback: derive account view from campaign rows with spend.
-      const campaigns = rows.filter((row) => row.entity_type === "campaign" && Number(row.spend_usd || 0) > 0);
-      const byAccount = new Map<string, PerfStateRow[]>();
-      campaigns.forEach((row) => {
-        const key = row.facebook_ad_account_id;
-        const list = byAccount.get(key) || [];
-        list.push(row);
-        byAccount.set(key, list);
+    const campaigns = rows.filter((row) => row.entity_type === "campaign" && Number(row.spend_usd || 0) > 0);
+    const byAccount = new Map<string, PerfStateRow[]>();
+    campaigns.forEach((row) => {
+      const key = row.facebook_ad_account_id;
+      const list = byAccount.get(key) || [];
+      list.push(row);
+      byAccount.set(key, list);
+    });
+
+    const derived: PerfStateRow[] = [];
+    byAccount.forEach((items, accountKey) => {
+      const first = items[0];
+      const spend = items.reduce((sum, item) => sum + Number(item.spend_usd || 0), 0);
+      const results = items.reduce((sum, item) => sum + Number(item.results_count || 0), 0);
+      const cpmAvg = avg(items.map((item) => item.cpm));
+      const ctrAvg = avg(items.map((item) => item.ctr));
+      const cpcAvg = avg(items.map((item) => item.cpc_usd));
+      const cpr = results > 0 ? Number((spend / results).toFixed(2)) : null;
+
+      const confidence = Math.round(
+        items.reduce((sum, item) => sum + Number(item.ai_confidence_score || 55), 0) / items.length
+      );
+
+      const score = items.reduce((sum, item) => {
+        if (item.ai_recommendation === "scale") return sum + 2;
+        if (item.ai_recommendation === "improving") return sum + 1;
+        if (item.ai_recommendation === "worsening") return sum - 2;
+        return sum;
+      }, 0);
+
+      const rec: AiRecommendation =
+        score >= items.length ? "scale" : score > 0 ? "improving" : score <= -items.length ? "worsening" : "stable";
+
+      derived.push({
+        entity_type: "account",
+        entity_id: accountKey,
+        entity_name: first.account_name || (isEn ? "Unnamed account" : "Cuenta sin nombre"),
+        facebook_ad_account_id: accountKey,
+        account_name: first.account_name || null,
+        campaign_id: null,
+        campaign_name: null,
+        adset_id: null,
+        adset_name: null,
+        ad_id: null,
+        ad_name: null,
+        spend_usd: Number(spend.toFixed(2)),
+        results_count: results,
+        cost_per_result_usd: cpr,
+        cpm: cpmAvg,
+        ctr: ctrAvg,
+        cpc_usd: cpcAvg,
+        trend: first.trend,
+        health: first.health,
+        ai_recommendation: rec,
+        ai_reason_short: isEn ? "Derived from active campaigns with spend" : "Derivado de campañas activas con gasto",
+        ai_confidence_score: confidence,
+        ai_model: "derived",
+        effective_status: first.effective_status,
+        last_synced_at: first.last_synced_at,
       });
+    });
 
-      const derived: PerfStateRow[] = [];
-      byAccount.forEach((items, accountKey) => {
-        const first = items[0];
-        const spend = items.reduce((sum, item) => sum + Number(item.spend_usd || 0), 0);
-        const results = items.reduce((sum, item) => sum + Number(item.results_count || 0), 0);
-        const cpmAvg = avg(items.map((item) => item.cpm));
-        const ctrAvg = avg(items.map((item) => item.ctr));
-        const cpcAvg = avg(items.map((item) => item.cpc_usd));
-        const cpr = results > 0 ? Number((spend / results).toFixed(2)) : null;
+    return derived.sort((a, b) => Number(b.spend_usd || 0) - Number(a.spend_usd || 0));
+  }, [rows, isEn]);
 
-        const confidence = Math.round(
-          items.reduce((sum, item) => sum + Number(item.ai_confidence_score || 55), 0) / items.length
-        );
-
-        const score = items.reduce((sum, item) => {
-          if (item.ai_recommendation === "scale") return sum + 2;
-          if (item.ai_recommendation === "improving") return sum + 1;
-          if (item.ai_recommendation === "worsening") return sum - 2;
-          return sum;
-        }, 0);
-        const rec: AiRecommendation =
-          score >= items.length ? "scale" : score > 0 ? "improving" : score <= -items.length ? "worsening" : "stable";
-
-        derived.push({
-          entity_type: "account",
-          entity_id: accountKey,
-          entity_name: first.account_name || "Cuenta sin nombre",
-          facebook_ad_account_id: accountKey,
-          account_name: first.account_name || null,
-          campaign_id: null,
-          campaign_name: null,
-          adset_id: null,
-          adset_name: null,
-          ad_id: null,
-          ad_name: null,
-          spend_usd: Number(spend.toFixed(2)),
-          results_count: results,
-          cost_per_result_usd: cpr,
-          cpm: cpmAvg,
-          ctr: ctrAvg,
-          cpc_usd: cpcAvg,
-          trend: first.trend,
-          health: first.health,
-          ai_recommendation: rec,
-          ai_reason_short: "Derivado de campañas activas con gasto",
-          ai_confidence_score: confidence,
-          ai_model: "derived",
-          effective_status: first.effective_status,
-          last_synced_at: first.last_synced_at,
-        });
-      });
-
-      return derived.sort((a, b) => Number(b.spend_usd || 0) - Number(a.spend_usd || 0));
-    },
-    [rows]
-  );
-  const campaignRows = useMemo(
-    () => rows.filter((row) => row.entity_type === "campaign"),
-    [rows]
-  );
-  const adsetRows = useMemo(
-    () => rows.filter((row) => row.entity_type === "adset"),
-    [rows]
-  );
+  const campaignRows = useMemo(() => rows.filter((row) => row.entity_type === "campaign"), [rows]);
+  const adsetRows = useMemo(() => rows.filter((row) => row.entity_type === "adset"), [rows]);
   const adRows = useMemo(() => rows.filter((row) => row.entity_type === "ad"), [rows]);
 
   const filteredCampaignRows = useMemo(() => {
@@ -255,8 +251,7 @@ export default function RendimientoPage() {
   }, [currentRows]);
 
   const aiCoverage = useMemo(() => {
-    const openAiRows = rows.filter((row) => row.ai_model && row.ai_model !== "rule" && row.ai_model !== "derived")
-      .length;
+    const openAiRows = rows.filter((row) => row.ai_model && row.ai_model !== "rule" && row.ai_model !== "derived").length;
     const total = rows.length;
     return `${Number(aiRun?.last_openai_entities || openAiRows)}/${Number(aiRun?.last_total_entities || total)}`;
   }, [rows, aiRun]);
@@ -297,9 +292,7 @@ export default function RendimientoPage() {
     if (viewLevel === "campaign") {
       if (row.campaign_id) {
         if (!selectedCampaigns.includes(row.campaign_id)) setSelectedCampaigns([row.campaign_id]);
-        if (!selectedAccounts.includes(row.facebook_ad_account_id)) {
-          setSelectedAccounts([row.facebook_ad_account_id]);
-        }
+        if (!selectedAccounts.includes(row.facebook_ad_account_id)) setSelectedAccounts([row.facebook_ad_account_id]);
       }
       setSelectedAdsets([]);
       setSelectedAds([]);
@@ -309,12 +302,8 @@ export default function RendimientoPage() {
     if (viewLevel === "adset") {
       if (row.adset_id) {
         if (!selectedAdsets.includes(row.adset_id)) setSelectedAdsets([row.adset_id]);
-        if (row.campaign_id && !selectedCampaigns.includes(row.campaign_id)) {
-          setSelectedCampaigns([row.campaign_id]);
-        }
-        if (!selectedAccounts.includes(row.facebook_ad_account_id)) {
-          setSelectedAccounts([row.facebook_ad_account_id]);
-        }
+        if (row.campaign_id && !selectedCampaigns.includes(row.campaign_id)) setSelectedCampaigns([row.campaign_id]);
+        if (!selectedAccounts.includes(row.facebook_ad_account_id)) setSelectedAccounts([row.facebook_ad_account_id]);
       }
       setViewLevel("ad");
     }
@@ -341,8 +330,7 @@ export default function RendimientoPage() {
 
   const currentSelectableIds = useMemo(() => {
     if (viewLevel === "account") return currentRows.map((row) => row.facebook_ad_account_id);
-    if (viewLevel === "campaign")
-      return currentRows.map((row) => row.campaign_id || row.entity_id);
+    if (viewLevel === "campaign") return currentRows.map((row) => row.campaign_id || row.entity_id);
     if (viewLevel === "adset") return currentRows.map((row) => row.adset_id || row.entity_id);
     return currentRows.map((row) => row.ad_id || row.entity_id);
   }, [currentRows, viewLevel]);
@@ -387,9 +375,11 @@ export default function RendimientoPage() {
       <div className="mx-auto max-w-7xl">
         <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-[#111827] sm:text-4xl">Rendimiento</h1>
+            <h1 className="text-3xl font-bold text-[#111827] sm:text-4xl">{isEn ? "Performance" : "Rendimiento"}</h1>
             <p className="mt-2 text-base text-slate-600">
-              Vista jerárquica: Cuentas → Campañas → Adsets → Ads.
+              {isEn
+                ? "Hierarchical view: Accounts → Campaigns → Adsets → Ads."
+                : "Vista jerárquica: Cuentas → Campañas → Adsets → Ads."}
             </p>
           </div>
           <button
@@ -398,49 +388,45 @@ export default function RendimientoPage() {
             disabled={syncing}
             className="inline-flex items-center justify-center rounded-lg bg-[#1D293D] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {syncing ? "Sincronizando..." : "Sincronizar ahora"}
+            {syncing ? (isEn ? "Syncing..." : "Sincronizando...") : isEn ? "Sync now" : "Sincronizar ahora"}
           </button>
         </header>
 
-        {error ? (
-          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
-        ) : null}
-        {notice ? (
-          <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div>
-        ) : null}
+        {error ? <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
+        {notice ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div> : null}
 
         <section className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <StatCard title="Bueno" value={stats.good} color="text-emerald-600" />
-          <StatCard title="Observación" value={stats.watch} color="text-amber-600" />
-          <StatCard title="Crítico" value={stats.bad} color="text-red-600" />
+          <StatCard title={isEn ? "Good" : "Bueno"} value={stats.good} color="text-emerald-600" />
+          <StatCard title={isEn ? "Watch" : "Observación"} value={stats.watch} color="text-amber-600" />
+          <StatCard title={isEn ? "Critical" : "Crítico"} value={stats.bad} color="text-red-600" />
         </section>
 
         <section className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
           <InfoCard
-            title="Estado AI"
+            title={isEn ? "AI status" : "Estado AI"}
             value={aiRun?.last_status || "idle"}
-            subtitle={aiRun?.last_error ? `Motivo: ${aiRun.last_error}` : "Evaluación cada 30 minutos"}
+            subtitle={aiRun?.last_error ? `${isEn ? "Reason" : "Motivo"}: ${aiRun.last_error}` : isEn ? "Evaluation every 30 minutes" : "Evaluación cada 30 minutos"}
             tone={aiRun?.last_status === "running" ? "text-amber-700" : "text-slate-700"}
           />
           <InfoCard
-            title="Último análisis"
-            value={aiRun?.last_ai_run_at ? new Date(aiRun.last_ai_run_at).toLocaleString("es-PE") : "-"}
-            subtitle="Toma gasto, resultados, costo, cpc, ctr y cpm"
+            title={isEn ? "Last analysis" : "Último análisis"}
+            value={aiRun?.last_ai_run_at ? new Date(aiRun.last_ai_run_at).toLocaleString(isEn ? "en-US" : "es-PE") : "-"}
+            subtitle={isEn ? "Uses spend, results, cost, CPC, CTR, and CPM" : "Toma gasto, resultados, costo, cpc, ctr y cpm"}
             tone="text-slate-700"
           />
           <InfoCard
-            title="Cobertura OpenAI"
+            title="OpenAI coverage"
             value={aiCoverage}
-            subtitle={`Modelo: ${aiRun?.last_model || "rule/derived"}`}
+            subtitle={`${isEn ? "Model" : "Modelo"}: ${aiRun?.last_model || "rule/derived"}`}
             tone="text-sky-700"
           />
         </section>
 
         <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center gap-2">
-            <BreadcrumbButton label="Cuentas" active={viewLevel === "account"} onClick={() => goToLevel("account")} />
+            <BreadcrumbButton label={isEn ? "Accounts" : "Cuentas"} active={viewLevel === "account"} onClick={() => goToLevel("account")} />
             <span className="text-slate-300">/</span>
-            <BreadcrumbButton label="Campañas" active={viewLevel === "campaign"} onClick={() => goToLevel("campaign")} />
+            <BreadcrumbButton label={isEn ? "Campaigns" : "Campañas"} active={viewLevel === "campaign"} onClick={() => goToLevel("campaign")} />
             <span className="text-slate-300">/</span>
             <BreadcrumbButton label="Adsets" active={viewLevel === "adset"} onClick={() => goToLevel("adset")} />
             <span className="text-slate-300">/</span>
@@ -450,10 +436,12 @@ export default function RendimientoPage() {
 
         <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-xl font-semibold text-[#111827]">
-            Entidades ({getLevelLabel(viewLevel)})
+            {isEn ? "Entities" : "Entidades"} ({getLevelLabel(viewLevel, isEn)})
           </h2>
           <p className="mt-1 text-sm text-slate-500">
-            Click en nombre para bajar de nivel. Usa checkbox para selección múltiple.
+            {isEn
+              ? "Click a name to drill down. Use checkboxes for multi-select."
+              : "Click en nombre para bajar de nivel. Usa checkbox para selección múltiple."}
           </p>
           <div className="mt-4 overflow-x-auto">
             <table className="min-w-full text-left">
@@ -465,34 +453,34 @@ export default function RendimientoPage() {
                       checked={allSelected}
                       onChange={toggleSelectAllInView}
                       className="h-4 w-4 rounded border-slate-300 text-[#1D293D] focus:ring-[#1D293D]"
-                      aria-label="Seleccionar todo"
+                      aria-label={isEn ? "Select all" : "Seleccionar todo"}
                     />
                   </th>
-                  <th className="pb-3 pr-4 font-semibold">Entidad</th>
-                  <th className="pb-3 pr-4 font-semibold">Salud</th>
-                  <th className="pb-3 pr-4 font-semibold">Tendencia</th>
-                  <th className="pb-3 pr-4 font-semibold">Gasto (USD)</th>
-                  <th className="pb-3 pr-4 font-semibold">Resultados</th>
-                  <th className="pb-3 pr-4 font-semibold">Costo</th>
+                  <th className="pb-3 pr-4 font-semibold">{isEn ? "Entity" : "Entidad"}</th>
+                  <th className="pb-3 pr-4 font-semibold">{isEn ? "Health" : "Salud"}</th>
+                  <th className="pb-3 pr-4 font-semibold">{isEn ? "Trend" : "Tendencia"}</th>
+                  <th className="pb-3 pr-4 font-semibold">{isEn ? "Spend (USD)" : "Gasto (USD)"}</th>
+                  <th className="pb-3 pr-4 font-semibold">{isEn ? "Results" : "Resultados"}</th>
+                  <th className="pb-3 pr-4 font-semibold">{isEn ? "Cost" : "Costo"}</th>
                   <th className="pb-3 pr-4 font-semibold">CPM</th>
                   <th className="pb-3 pr-4 font-semibold">CTR</th>
                   <th className="pb-3 pr-4 font-semibold">CPC</th>
-                  <th className="pb-3 pr-4 font-semibold">AI Recommendation</th>
+                  <th className="pb-3 pr-4 font-semibold">AI Analysis</th>
                   <th className="pb-3 pr-4 font-semibold">Confidence</th>
-                  <th className="pb-3 font-semibold">Estado</th>
+                  <th className="pb-3 font-semibold">{isEn ? "Status" : "Estado"}</th>
                 </tr>
               </thead>
               <tbody>
                 {loading ? (
                   <tr>
                     <td colSpan={13} className="py-5 text-sm text-slate-500">
-                      Cargando...
+                      {isEn ? "Loading..." : "Cargando..."}
                     </td>
                   </tr>
                 ) : currentRows.length === 0 ? (
                   <tr>
                     <td colSpan={13} className="py-5 text-sm text-slate-500">
-                      Sin datos para este filtro.
+                      {isEn ? "No data for this filter." : "Sin datos para este filtro."}
                     </td>
                   </tr>
                 ) : (
@@ -518,22 +506,17 @@ export default function RendimientoPage() {
                           />
                         </td>
                         <td className="py-3 pr-4">
-                          <button
-                            type="button"
-                            onClick={() => drillDown(row)}
-                            disabled={viewLevel === "ad"}
-                            className="text-left disabled:cursor-default"
-                          >
+                          <button type="button" onClick={() => drillDown(row)} disabled={viewLevel === "ad"} className="text-left disabled:cursor-default">
                             <p className="text-sm font-semibold text-[#111827] underline decoration-transparent underline-offset-2 hover:decoration-[#1D293D] hover:text-[#1D293D]">
-                              {row.entity_name || "Sin nombre"}
+                              {row.entity_name || (isEn ? "No name" : "Sin nombre")}
                             </p>
                             <p className="text-xs text-slate-500">
-                              {row.account_name || "Sin cuenta"} - {row.entity_id}
+                              {row.account_name || (isEn ? "No account" : "Sin cuenta")} - {row.entity_id}
                             </p>
                           </button>
                         </td>
-                        <td className="py-3 pr-4"><Badge value={row.health} /></td>
-                        <td className="py-3 pr-4"><TrendBadge value={row.trend} /></td>
+                        <td className="py-3 pr-4"><Badge value={row.health} isEn={isEn} /></td>
+                        <td className="py-3 pr-4"><TrendBadge value={row.trend} isEn={isEn} /></td>
                         <td className="py-3 pr-4 text-sm font-semibold text-[#1D293D]">{formatUsd(row.spend_usd)}</td>
                         <td className="py-3 pr-4 text-sm text-[#1D293D]">{row.results_count}</td>
                         <td className="py-3 pr-4 text-sm text-[#1D293D]">
@@ -543,7 +526,7 @@ export default function RendimientoPage() {
                         <td className="py-3 pr-4 text-sm text-[#1D293D]">{row.ctr != null ? `${Number(row.ctr).toFixed(2)}%` : "-"}</td>
                         <td className="py-3 pr-4 text-sm text-[#1D293D]">{row.cpc_usd != null ? formatUsd(row.cpc_usd) : "-"}</td>
                         <td className="py-3 pr-4 text-sm text-[#1D293D]">
-                          <AiRecommendationPill recommendation={row.ai_recommendation} reason={row.ai_reason_short} />
+                          <AiRecommendationPill recommendation={row.ai_recommendation} reason={row.ai_reason_short} isEn={isEn} />
                         </td>
                         <td className="py-3 pr-4 text-sm text-[#1D293D]">{row.ai_confidence_score != null ? `${row.ai_confidence_score}%` : "-"}</td>
                         <td className="py-3 text-sm text-[#1D293D]">{row.effective_status || "-"}</td>
@@ -607,28 +590,26 @@ function BreadcrumbButton({ label, active, onClick }: { label: string; active: b
   );
 }
 
-function Badge({ value }: { value: Health }) {
+function Badge({ value, isEn }: { value: Health; isEn: boolean }) {
   const style =
     value === "good"
       ? "bg-emerald-100 text-emerald-700"
       : value === "watch"
         ? "bg-amber-100 text-amber-700"
         : "bg-red-100 text-red-700";
-  const label = value === "good" ? "Bueno" : value === "watch" ? "Observación" : "Crítico";
+  const label = value === "good" ? (isEn ? "Good" : "Bueno") : value === "watch" ? (isEn ? "Watch" : "Observación") : isEn ? "Critical" : "Crítico";
   return <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${style}`}>{label}</span>;
 }
 
-function TrendBadge({ value }: { value: Trend }) {
-  const style =
-    value === "improving" ? "text-emerald-600" : value === "worsening" ? "text-red-600" : "text-slate-600";
-  const label = value === "improving" ? "Mejorando" : value === "worsening" ? "Empeorando" : "Estable";
+function TrendBadge({ value, isEn }: { value: Trend; isEn: boolean }) {
+  const style = value === "improving" ? "text-emerald-600" : value === "worsening" ? "text-red-600" : "text-slate-600";
+  const label = value === "improving" ? (isEn ? "Improving" : "Mejorando") : value === "worsening" ? (isEn ? "Worsening" : "Empeorando") : isEn ? "Stable" : "Estable";
   return <span className={`text-xs font-semibold ${style}`}>{label}</span>;
 }
 
-function AiRecommendationPill({ recommendation, reason }: { recommendation: AiRecommendation; reason: string | null }) {
+function AiRecommendationPill({ recommendation, reason, isEn }: { recommendation: AiRecommendation; reason: string | null; isEn: boolean }) {
   const rec = recommendation || "stable";
-  const label =
-    rec === "improving" ? "Mejorando" : rec === "scale" ? "Escalar" : rec === "worsening" ? "Empeorando" : "Estable";
+  const label = rec === "improving" ? (isEn ? "Improving" : "Mejorando") : rec === "scale" ? (isEn ? "Scale" : "Escalar") : rec === "worsening" ? (isEn ? "Worsening" : "Empeorando") : isEn ? "Stable" : "Estable";
   const style =
     rec === "improving"
       ? "bg-emerald-100 text-emerald-700"
@@ -638,7 +619,7 @@ function AiRecommendationPill({ recommendation, reason }: { recommendation: AiRe
           ? "bg-red-100 text-red-700"
           : "bg-slate-100 text-slate-700";
   return (
-    <span title={reason || "Sin detalle"} className={`rounded-full px-2.5 py-1 text-xs font-semibold ${style}`}>
+    <span title={reason || (isEn ? "No details" : "Sin detalle")} className={`rounded-full px-2.5 py-1 text-xs font-semibold ${style}`}>
       {label}
     </span>
   );
@@ -657,9 +638,9 @@ function avg(values: Array<number | null>) {
   return Number((valid.reduce((sum, v) => sum + v, 0) / valid.length).toFixed(4));
 }
 
-function getLevelLabel(level: PerfEntityType) {
-  if (level === "account") return "Cuentas";
-  if (level === "campaign") return "Campañas";
+function getLevelLabel(level: PerfEntityType, isEn: boolean) {
+  if (level === "account") return isEn ? "Accounts" : "Cuentas";
+  if (level === "campaign") return isEn ? "Campaigns" : "Campañas";
   if (level === "adset") return "Adsets";
   return "Ads";
 }

@@ -1,7 +1,8 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { AppTheme, inferThemeFromBrowser, normalizeTheme, THEME_COOKIE } from "../lib/theme";
+import { usePathname } from "next/navigation";
+import { AppTheme, inferThemeFromBrowser } from "../lib/theme";
 
 type ThemeContextValue = {
   theme: AppTheme;
@@ -13,15 +14,6 @@ const ThemeContext = createContext<ThemeContextValue>({
   setTheme: () => undefined,
 });
 
-function readCookieTheme() {
-  if (typeof document === "undefined") return null;
-  const match = document.cookie
-    .split("; ")
-    .find((entry) => entry.startsWith(`${THEME_COOKIE}=`))
-    ?.split("=")[1];
-  return normalizeTheme(match);
-}
-
 function applyThemeToDom(theme: AppTheme) {
   if (typeof document === "undefined") return;
   const root = document.documentElement;
@@ -30,46 +22,52 @@ function applyThemeToDom(theme: AppTheme) {
   root.setAttribute("data-theme", theme);
 }
 
-function persistTheme(theme: AppTheme) {
-  if (typeof document === "undefined") return;
-  document.cookie = `${THEME_COOKIE}=${theme}; path=/; max-age=31536000; SameSite=Lax`;
-  try {
-    localStorage.setItem(THEME_COOKIE, theme);
-  } catch {
-    // Ignore localStorage errors
-  }
-}
-
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<AppTheme>("light");
+  const pathname = usePathname();
+
+  const isPublicRoute = useMemo(() => {
+    const path = (pathname || "/").toLowerCase();
+    const normalized = path.replace(/^\/(en|es)(?=\/|$)/, "") || "/";
+    const publicPrefixes = [
+      "/",
+      "/signin",
+      "/signup",
+      "/verify-email",
+      "/privacy-policy",
+      "/terms-and-conditions",
+      "/data-deletion-policy",
+    ];
+    return publicPrefixes.some((prefix) =>
+      prefix === "/" ? normalized === "/" : normalized.startsWith(prefix)
+    );
+  }, [pathname]);
 
   useEffect(() => {
-    let resolved = readCookieTheme();
-
-    if (!resolved && typeof window !== "undefined") {
-      try {
-        resolved = normalizeTheme(localStorage.getItem(THEME_COOKIE));
-      } catch {
-        resolved = null;
-      }
-    }
-
-    const nextTheme = resolved || inferThemeFromBrowser();
+    const nextTheme = inferThemeFromBrowser();
     setThemeState(nextTheme);
-    persistTheme(nextTheme);
     applyThemeToDom(nextTheme);
   }, []);
 
+  useEffect(() => {
+    if (isPublicRoute) {
+      applyThemeToDom("light");
+      return;
+    }
+    applyThemeToDom(theme);
+  }, [isPublicRoute, theme]);
+
   const value = useMemo<ThemeContextValue>(
     () => ({
-      theme,
+      theme: isPublicRoute ? "light" : theme,
       setTheme: (nextTheme) => {
         setThemeState(nextTheme);
-        persistTheme(nextTheme);
-        applyThemeToDom(nextTheme);
+        if (!isPublicRoute) {
+          applyThemeToDom(nextTheme);
+        }
       },
     }),
-    [theme]
+    [isPublicRoute, theme]
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;

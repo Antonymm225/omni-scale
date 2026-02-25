@@ -1,8 +1,9 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
+import { useLocale } from "../../../providers/LocaleProvider";
 
 type OnboardingPlanRow = {
   plan: string | null;
@@ -11,6 +12,8 @@ type OnboardingPlanRow = {
 const PLAN_OPTIONS = ["Basic", "Standard", "Enterprise"];
 
 export default function FacturacionPage() {
+  const { locale } = useLocale();
+  const isEn = locale === "en";
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -28,7 +31,7 @@ export default function FacturacionPage() {
         error: userError,
       } = await supabase.auth.getUser();
       if (userError || !user) {
-        setError("No se pudo validar la sesion.");
+        setError(isEn ? "Could not validate session." : "No se pudo validar la sesion.");
         setLoading(false);
         return;
       }
@@ -53,7 +56,7 @@ export default function FacturacionPage() {
     };
 
     void load();
-  }, []);
+  }, [isEn]);
 
   const savePlan = async () => {
     setSaving(true);
@@ -65,7 +68,7 @@ export default function FacturacionPage() {
       error: userError,
     } = await supabase.auth.getUser();
     if (userError || !user) {
-      setError("No se pudo validar la sesion.");
+      setError(isEn ? "Could not validate session." : "No se pudo validar la sesion.");
       setSaving(false);
       return;
     }
@@ -94,7 +97,7 @@ export default function FacturacionPage() {
       }
     }
 
-    setNotice("Plan actualizado correctamente.");
+    setNotice(isEn ? "Plan updated successfully." : "Plan actualizado correctamente.");
     setSaving(false);
   };
 
@@ -103,9 +106,13 @@ export default function FacturacionPage() {
       <div className="mx-auto max-w-5xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-10">
         <header className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-semibold text-[#111827] sm:text-4xl">Facturación</h1>
+            <h1 className="text-3xl font-semibold text-[#111827] sm:text-4xl">
+              {isEn ? "Billing" : "Facturación"}
+            </h1>
             <p className="mt-2 text-sm text-slate-600">
-              Gestiona tu plan, historial de cobros y cancelación.
+              {isEn
+                ? "Manage your plan, billing history, and cancellation."
+                : "Gestiona tu plan, historial de cobros y cancelación."}
             </p>
           </div>
           <button
@@ -113,7 +120,7 @@ export default function FacturacionPage() {
             onClick={() => router.push("/mi-cuenta")}
             className="inline-flex items-center justify-center rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
           >
-            Volver a mi cuenta
+            {isEn ? "Back to account" : "Volver a mi cuenta"}
           </button>
         </header>
 
@@ -125,12 +132,12 @@ export default function FacturacionPage() {
         ) : null}
 
         <section className="mt-6 rounded-xl border border-slate-200 bg-slate-50 p-5">
-          <h2 className="text-lg font-semibold text-[#111827]">Membresía actual</h2>
+          <h2 className="text-lg font-semibold text-[#111827]">{isEn ? "Current membership" : "Membresía actual"}</h2>
           {loading ? (
-            <p className="mt-2 text-sm text-slate-500">Cargando plan actual...</p>
+            <p className="mt-2 text-sm text-slate-500">{isEn ? "Loading current plan..." : "Cargando plan actual..."}</p>
           ) : (
             <>
-              <p className="mt-2 text-sm text-slate-600">Selecciona tu plan:</p>
+              <p className="mt-2 text-sm text-slate-600">{isEn ? "Select your plan:" : "Selecciona tu plan:"}</p>
               <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-3">
                 {PLAN_OPTIONS.map((plan) => (
                   <button
@@ -153,23 +160,25 @@ export default function FacturacionPage() {
                 disabled={saving}
                 className="mt-4 inline-flex items-center justify-center rounded-lg bg-[#1D293D] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {saving ? "Guardando..." : "Guardar plan"}
+                {saving ? (isEn ? "Saving..." : "Guardando...") : isEn ? "Save plan" : "Guardar plan"}
               </button>
             </>
           )}
         </section>
 
         <section className="mt-5 rounded-xl border border-slate-200 bg-white p-5">
-          <h2 className="text-lg font-semibold text-[#111827]">Historial de cobros</h2>
+          <h2 className="text-lg font-semibold text-[#111827]">{isEn ? "Billing history" : "Historial de cobros"}</h2>
           <p className="mt-2 text-sm text-slate-600">
-            Próximamente mostraremos aquí tus cobros y facturas.
+            {isEn ? "Your charges and invoices will appear here soon." : "Próximamente mostraremos aquí tus cobros y facturas."}
           </p>
         </section>
 
         <section className="mt-5 rounded-xl border border-red-200 bg-red-50 p-5">
-          <h2 className="text-lg font-semibold text-red-700">Cancelar membresía</h2>
+          <h2 className="text-lg font-semibold text-red-700">{isEn ? "Cancel membership" : "Cancelar membresía"}</h2>
           <p className="mt-2 text-sm text-red-600">
-            Próximamente podrás cancelar tu membresía desde esta sección.
+            {isEn
+              ? "You will be able to cancel your membership from this section soon."
+              : "Próximamente podrás cancelar tu membresía desde esta sección."}
           </p>
         </section>
       </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "../../../lib/supabaseClient";
+import { useLocale } from "../../../providers/LocaleProvider";
 
 type EverflowRegion = "US" | "EU";
 type EverflowAccessType = "Network" | "Affiliate" | "Advertiser";
@@ -13,6 +14,8 @@ type SavedFlags = {
 };
 
 export default function IntegracionesPage() {
+  const { locale } = useLocale();
+  const isEn = locale === "en";
   const [loading, setLoading] = useState(true);
   const [savingEverflow, setSavingEverflow] = useState(false);
   const [savingOpenAi, setSavingOpenAi] = useState(false);
@@ -52,7 +55,7 @@ export default function IntegracionesPage() {
       } = await supabase.auth.getUser();
 
       if (userError || !user) {
-        setError("No se pudo validar la sesion.");
+        setError(isEn ? "Could not validate session." : "No se pudo validar la sesion.");
         setLoading(false);
         return;
       }
@@ -142,7 +145,7 @@ export default function IntegracionesPage() {
 
     setSavedFlags((prev) => ({ ...prev, everflowApiKey: prev.everflowApiKey || Boolean(everflowApiKey.trim()) }));
     setEverflowApiKey("");
-    setNotice("Integracion Everflow guardada.");
+    setNotice(isEn ? "Everflow integration saved." : "Integracion Everflow guardada.");
     setSavingEverflow(false);
   };
 
@@ -166,7 +169,7 @@ export default function IntegracionesPage() {
 
     setSavedFlags((prev) => ({ ...prev, openAiApiKey: prev.openAiApiKey || Boolean(openAiKey.trim()) }));
     setOpenAiKey("");
-    setNotice("OpenAI API Key guardada.");
+    setNotice(isEn ? "OpenAI API key saved." : "OpenAI API Key guardada.");
     setSavingOpenAi(false);
   };
 
@@ -179,7 +182,7 @@ export default function IntegracionesPage() {
 
     const clean = whatsappNumber.trim();
     if (!clean) {
-      setWhatsappError("Ingresa un numero de WhatsApp.");
+      setWhatsappError(isEn ? "Enter a WhatsApp number." : "Ingresa un numero de WhatsApp.");
       setSavingWhatsapp(false);
       return;
     }
@@ -191,7 +194,7 @@ export default function IntegracionesPage() {
     });
     const payload = (await response.json().catch(() => ({}))) as { success?: boolean; error?: string };
     if (!response.ok || !payload.success) {
-      setWhatsappError(payload.error || "No se pudo enviar mensaje de verificacion.");
+      setWhatsappError(payload.error || (isEn ? "Could not send verification message." : "No se pudo enviar mensaje de verificacion."));
       setSavingWhatsapp(false);
       return;
     }
@@ -200,7 +203,7 @@ export default function IntegracionesPage() {
     setWhatsappHasPendingCode(true);
     setSavedWhatsappNumber(clean.replace(/\D/g, ""));
     setSavedFlags((prev) => ({ ...prev, whatsapp: false }));
-    setNotice("Te enviamos un codigo por WhatsApp. Ingresalo para verificar.");
+    setNotice(isEn ? "Verification code sent to WhatsApp. Enter it to verify." : "Te enviamos un codigo por WhatsApp. Ingresalo para verificar.");
     setSavingWhatsapp(false);
   };
 
@@ -214,7 +217,7 @@ export default function IntegracionesPage() {
     const clean = whatsappNumber.trim();
     const code = whatsappCode.trim().toUpperCase();
     if (!clean || code.length !== 4) {
-      setWhatsappError("Ingresa el codigo de 4 caracteres.");
+      setWhatsappError(isEn ? "Enter the 4-character code." : "Ingresa el codigo de 4 caracteres.");
       setVerifyingWhatsapp(false);
       return;
     }
@@ -226,7 +229,7 @@ export default function IntegracionesPage() {
     });
     const payload = (await response.json().catch(() => ({}))) as { success?: boolean; error?: string };
     if (!response.ok || !payload.success) {
-      setWhatsappError(payload.error || "No se pudo verificar el codigo.");
+      setWhatsappError(payload.error || (isEn ? "Could not verify the code." : "No se pudo verificar el codigo."));
       setVerifyingWhatsapp(false);
       return;
     }
@@ -238,7 +241,7 @@ export default function IntegracionesPage() {
     setEditingWhatsappNumber(false);
     setSavedWhatsappNumber(normalized);
     setSavedFlags((prev) => ({ ...prev, whatsapp: true }));
-    setNotice("WhatsApp conectado.");
+    setNotice(isEn ? "WhatsApp connected." : "WhatsApp conectado.");
     setVerifyingWhatsapp(false);
   };
 
@@ -257,7 +260,9 @@ export default function IntegracionesPage() {
       const message = (upsertError.message || "").toLowerCase();
       if (message.includes("whatsapp_notifications_enabled")) {
         setError(
-          "Falta la columna whatsapp_notifications_enabled en user_integrations. Ejecuta el SQL de actualizacion."
+          isEn
+            ? "Missing whatsapp_notifications_enabled in user_integrations. Run the migration SQL."
+            : "Falta la columna whatsapp_notifications_enabled en user_integrations. Ejecuta el SQL de actualizacion."
         );
       } else {
         setError(upsertError.message);
@@ -267,7 +272,7 @@ export default function IntegracionesPage() {
     }
 
     setWhatsappNotificationsEnabled(next);
-    setNotice(next ? "Notificaciones AI activadas." : "Notificaciones AI pausadas.");
+    setNotice(next ? (isEn ? "AI notifications enabled." : "Notificaciones AI activadas.") : (isEn ? "AI notifications paused." : "Notificaciones AI pausadas."));
     setSavingWhatsappNotifications(false);
   };
 
@@ -284,9 +289,11 @@ export default function IntegracionesPage() {
     <main className="px-4 py-8 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-5xl">
         <header>
-          <h1 className="text-3xl font-bold text-[#111827] sm:text-4xl">Integraciones</h1>
+          <h1 className="text-3xl font-bold text-[#111827] sm:text-4xl">{isEn ? "Integrations" : "Integraciones"}</h1>
           <p className="mt-2 text-sm text-slate-600">
-            Configura conexiones para analisis y automatizacion de campanas.
+            {isEn
+              ? "Configure connections for campaign analysis and automation."
+              : "Configura conexiones para analisis y automatizacion de campanas."}
           </p>
         </header>
 
@@ -302,10 +309,10 @@ export default function IntegracionesPage() {
             <div className="flex items-start justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-[#111827]">Everflow</h2>
-                <p className="mt-1 text-sm text-slate-600">Configura API para escritura de datos.</p>
+                <p className="mt-1 text-sm text-slate-600">{isEn ? "Configure API for data writeback." : "Configura API para escritura de datos."}</p>
               </div>
               <span className="whitespace-nowrap rounded-full border border-amber-300 bg-amber-50 px-2 py-1 text-xs font-semibold text-amber-700">
-                Integracion
+                {isEn ? "Integration" : "Integracion"}
               </span>
             </div>
 
@@ -316,14 +323,14 @@ export default function IntegracionesPage() {
                   type="password"
                   value={everflowApiKey}
                   onChange={(event) => setEverflowApiKey(event.target.value)}
-                  placeholder="Ingresa la API Key de Everflow"
+                  placeholder={isEn ? "Enter Everflow API key" : "Ingresa la API Key de Everflow"}
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none ring-0 focus:border-[#1D293D]"
                 />
               </label>
-              <SecretSavedDots show={savedFlags.everflowApiKey} />
+              <SecretSavedDots show={savedFlags.everflowApiKey} label={isEn ? "Saved" : "Guardada"} />
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Region</span>
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">{isEn ? "Region" : "Region"}</span>
                 <select
                   value={everflowRegion}
                   onChange={(event) => setEverflowRegion(event.target.value as EverflowRegion)}
@@ -335,7 +342,7 @@ export default function IntegracionesPage() {
               </label>
 
               <label className="block">
-                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">Tipo de acceso</span>
+                <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">{isEn ? "Access type" : "Tipo de acceso"}</span>
                 <select
                   value={everflowAccessType}
                   onChange={(event) => setEverflowAccessType(event.target.value as EverflowAccessType)}
@@ -354,7 +361,7 @@ export default function IntegracionesPage() {
               disabled={loading || savingEverflow}
               className="mt-4 inline-flex items-center justify-center rounded-lg bg-[#1D293D] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {savingEverflow ? "Guardando..." : "Guardar Everflow"}
+              {savingEverflow ? (isEn ? "Saving..." : "Guardando...") : (isEn ? "Save Everflow" : "Guardar Everflow")}
             </button>
           </article>
 
@@ -363,11 +370,13 @@ export default function IntegracionesPage() {
               <div>
                 <h2 className="text-lg font-semibold text-[#111827]">OpenAI API Key</h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  Base para analisis inteligente de campanas y recomendaciones.
+                  {isEn
+                    ? "Core key for intelligent campaign analysis and recommendations."
+                    : "Base para analisis inteligente de campanas y recomendaciones."}
                 </p>
               </div>
               <span className="whitespace-nowrap rounded-full border border-sky-300 bg-sky-50 px-2 py-1 text-xs font-semibold text-sky-700">
-                Base lista
+                {isEn ? "Core ready" : "Base lista"}
               </span>
             </div>
 
@@ -384,7 +393,7 @@ export default function IntegracionesPage() {
                   className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 outline-none ring-0 focus:border-[#1D293D]"
                 />
               </label>
-              <SecretSavedDots show={savedFlags.openAiApiKey} />
+              <SecretSavedDots show={savedFlags.openAiApiKey} label={isEn ? "Saved" : "Guardada"} />
             </div>
 
             <button
@@ -393,7 +402,7 @@ export default function IntegracionesPage() {
               disabled={loading || savingOpenAi}
               className="mt-4 inline-flex items-center justify-center rounded-lg bg-[#1D293D] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {savingOpenAi ? "Guardando..." : "Guardar OpenAI"}
+              {savingOpenAi ? (isEn ? "Saving..." : "Guardando...") : (isEn ? "Save OpenAI" : "Guardar OpenAI")}
             </button>
           </article>
 
@@ -402,18 +411,20 @@ export default function IntegracionesPage() {
               <div>
                 <h2 className="text-lg font-semibold text-[#111827]">WhatsApp</h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  Numero para notificaciones y para recibir mensajes del AI.
+                  {isEn
+                    ? "Number used for notifications and AI messages."
+                    : "Numero para notificaciones y para recibir mensajes del AI."}
                 </p>
               </div>
               <span className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-1 text-xs font-semibold text-emerald-700">
-                Configurable
+                {isEn ? "Configurable" : "Configurable"}
               </span>
             </div>
 
             <div className="mt-4 max-w-xl">
               <label className="block">
                 <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                  Numero
+                  {isEn ? "Number" : "Numero"}
                 </span>
                 <div className="relative">
                   <input
@@ -435,31 +446,32 @@ export default function IntegracionesPage() {
               {whatsappError ? (
                 <p className="mt-2 text-xs text-red-600">{whatsappError}</p>
               ) : whatsappSaved ? (
-                <p className="mt-2 text-xs text-emerald-600">WhatsApp conectado.</p>
+                <p className="mt-2 text-xs text-emerald-600">{isEn ? "WhatsApp connected." : "WhatsApp conectado."}</p>
               ) : whatsappHasPendingCode ? (
-                <p className="mt-2 text-xs text-amber-600">Codigo enviado. Verifica para guardar.</p>
+                <p className="mt-2 text-xs text-amber-600">{isEn ? "Code sent. Verify to save." : "Codigo enviado. Verifica para guardar."}</p>
               ) : (
-                <p className="mt-2 text-xs text-slate-500">Aun no verificado.</p>
+                <p className="mt-2 text-xs text-slate-500">{isEn ? "Not verified yet." : "Aun no verificado."}</p>
               )}
               <p
                 className={`mt-1 text-xs font-medium ${
                   whatsappCanSend ? "text-emerald-600" : "text-amber-600"
                 }`}
               >
-                Estado de conexion: {whatsappCanSend ? "Enviando mensajes" : "No se puede enviar mensajes"}
+                {isEn ? "Connection status" : "Estado de conexion"}:{" "}
+                {whatsappCanSend ? (isEn ? "Sending messages" : "Enviando mensajes") : (isEn ? "Cannot send messages" : "No se puede enviar mensajes")}
               </p>
               <p
                 className={`mt-1 text-xs font-medium ${
                   whatsappNotificationsEnabled ? "text-emerald-600" : "text-amber-600"
                 }`}
               >
-                Notificaciones IA: {whatsappNotificationsEnabled ? "Activas" : "Pausadas"}
+                {isEn ? "AI notifications" : "Notificaciones IA"}: {whatsappNotificationsEnabled ? (isEn ? "Enabled" : "Activas") : (isEn ? "Paused" : "Pausadas")}
               </p>
 
               {showWhatsappVerificationFlow ? (
                 <label className="mt-3 block">
                   <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
-                    Codigo de verificacion
+                    {isEn ? "Verification code" : "Codigo de verificacion"}
                   </span>
                   <input
                     type="text"
@@ -481,7 +493,11 @@ export default function IntegracionesPage() {
                   disabled={loading || savingWhatsapp}
                   className="inline-flex items-center justify-center rounded-lg bg-[#1D293D] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {savingWhatsapp ? "Enviando..." : whatsappHasPendingCode ? "Reenviar codigo" : "Enviar codigo"}
+                  {savingWhatsapp
+                    ? (isEn ? "Sending..." : "Enviando...")
+                    : whatsappHasPendingCode
+                      ? (isEn ? "Resend code" : "Reenviar codigo")
+                      : (isEn ? "Send code" : "Enviar codigo")}
                 </button>
                 <button
                   type="button"
@@ -489,7 +505,7 @@ export default function IntegracionesPage() {
                   disabled={loading || verifyingWhatsapp}
                   className="inline-flex items-center justify-center rounded-lg border border-[#1D293D] bg-white px-4 py-2 text-sm font-semibold text-[#1D293D] hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  {verifyingWhatsapp ? "Verificando..." : "Verificar numero"}
+                  {verifyingWhatsapp ? (isEn ? "Verifying..." : "Verificando...") : (isEn ? "Verify number" : "Verificar numero")}
                 </button>
               </div>
             ) : (
@@ -505,10 +521,10 @@ export default function IntegracionesPage() {
                   }`}
                 >
                   {savingWhatsappNotifications
-                    ? "Guardando..."
+                    ? (isEn ? "Saving..." : "Guardando...")
                     : whatsappNotificationsEnabled
-                      ? "Pausar notificaciones IA"
-                      : "Reanudar notificaciones IA"}
+                      ? (isEn ? "Pause AI notifications" : "Pausar notificaciones IA")
+                      : (isEn ? "Resume AI notifications" : "Reanudar notificaciones IA")}
                 </button>
                 <button
                   type="button"
@@ -522,7 +538,7 @@ export default function IntegracionesPage() {
                   }}
                   className="inline-flex items-center justify-center rounded-lg border border-[#1D293D] bg-white px-4 py-2 text-sm font-semibold text-[#1D293D] hover:bg-slate-50"
                 >
-                  Cambiar numero
+                  {isEn ? "Change number" : "Cambiar numero"}
                 </button>
               </div>
             )}
@@ -533,14 +549,14 @@ export default function IntegracionesPage() {
   );
 }
 
-function SecretSavedDots({ show }: { show: boolean }) {
+function SecretSavedDots({ show, label }: { show: boolean; label: string }) {
   if (!show) return null;
   return (
     <div className="mt-2 inline-flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 px-2 py-1">
       {Array.from({ length: 8 }).map((_, index) => (
         <span key={index} className="h-2 w-2 rounded-full bg-slate-400" />
       ))}
-      <span className="ml-1 text-xs text-slate-500">Guardada</span>
+      <span className="ml-1 text-xs text-slate-500">{label}</span>
     </div>
   );
 }

@@ -46,7 +46,6 @@ export function proxy(request: NextRequest) {
     const rest = localeMatch[2] || "/";
     const destination = new URL(rest || "/", request.url);
     destination.search = search;
-
     const response = NextResponse.rewrite(destination);
     response.cookies.set(LOCALE_COOKIE, locale, {
       path: "/",
@@ -63,7 +62,13 @@ export function proxy(request: NextRequest) {
       request.url
     );
     destination.search = search;
-    return NextResponse.redirect(destination);
+    const response = NextResponse.redirect(destination);
+    response.cookies.set(LOCALE_COOKIE, locale, {
+      path: "/",
+      maxAge: 60 * 60 * 24 * 365,
+      sameSite: "lax",
+    });
+    return response;
   }
 
   return NextResponse.next();

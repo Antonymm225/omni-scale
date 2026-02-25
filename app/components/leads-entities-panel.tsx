@@ -1,7 +1,8 @@
-"use client";
+﻿"use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
+import { useLocale } from "../providers/LocaleProvider";
 
 type PerfEntityType = "account" | "campaign" | "adset" | "ad";
 type Trend = "improving" | "stable" | "worsening";
@@ -40,6 +41,9 @@ type LeadAdsetRow = {
 };
 
 export default function LeadsEntitiesPanel() {
+  const { locale } = useLocale();
+  const isEn = locale === "en";
+
   const [loading, setLoading] = useState(true);
   const [savingTarget, setSavingTarget] = useState(false);
   const [cplEnabled, setCplEnabled] = useState(true);
@@ -63,7 +67,7 @@ export default function LeadsEntitiesPanel() {
       error: userError,
     } = await supabase.auth.getUser();
     if (userError || !user) {
-      setError("No se pudo validar la sesion.");
+      setError(isEn ? "Could not validate session." : "No se pudo validar la sesion.");
       setLoading(false);
       return;
     }
@@ -93,7 +97,6 @@ export default function LeadsEntitiesPanel() {
       return;
     }
 
-    // Optional column (requires SQL). Graceful fallback if not exists.
     const profileRes = await supabase.from("profiles").select("leads_cpl_target_usd").eq("id", user.id).maybeSingle();
     if (!profileRes.error) {
       const raw = profileRes.data?.leads_cpl_target_usd as number | null | undefined;
@@ -107,9 +110,7 @@ export default function LeadsEntitiesPanel() {
 
     const leadAdsets = (adsetsRes.data || []) as LeadAdsetRow[];
     const leadAdsetIds = new Set(leadAdsets.map((row) => row.facebook_adset_id));
-    const leadCampaignIds = new Set(
-      leadAdsets.map((row) => row.campaign_id).filter((value): value is string => Boolean(value))
-    );
+    const leadCampaignIds = new Set(leadAdsets.map((row) => row.campaign_id).filter((value): value is string => Boolean(value)));
     const leadAccountIds = new Set(leadAdsets.map((row) => row.facebook_ad_account_id));
 
     const perfRows = ((perfRes.data || []) as PerfStateRow[]).filter((row) => {
@@ -133,7 +134,11 @@ export default function LeadsEntitiesPanel() {
 
   const saveTarget = async () => {
     if (!cplEnabled) {
-      setError("Falta la columna leads_cpl_target_usd en profiles. Ejecuta el SQL que te comparto abajo.");
+      setError(
+        isEn
+          ? "Missing leads_cpl_target_usd column in profiles. Run the SQL migration."
+          : "Falta la columna leads_cpl_target_usd en profiles. Ejecuta el SQL que te comparto abajo."
+      );
       return;
     }
     setSavingTarget(true);
@@ -144,14 +149,14 @@ export default function LeadsEntitiesPanel() {
       error: userError,
     } = await supabase.auth.getUser();
     if (userError || !user) {
-      setError("No se pudo validar la sesion.");
+      setError(isEn ? "Could not validate session." : "No se pudo validar la sesion.");
       setSavingTarget(false);
       return;
     }
 
     const parsed = cplTarget.trim() ? Number(cplTarget) : null;
     if (parsed != null && (Number.isNaN(parsed) || parsed < 0)) {
-      setError("El CPL objetivo debe ser un numero mayor o igual a 0.");
+      setError(isEn ? "Target CPL must be a number greater than or equal to 0." : "El CPL objetivo debe ser un numero mayor o igual a 0.");
       setSavingTarget(false);
       return;
     }
@@ -168,14 +173,18 @@ export default function LeadsEntitiesPanel() {
       const message = (error.message || "").toLowerCase();
       if (message.includes("leads_cpl_target_usd")) {
         setCplEnabled(false);
-        setError("Falta la columna leads_cpl_target_usd en profiles. Ejecuta el SQL que te comparto abajo.");
+        setError(
+          isEn
+            ? "Missing leads_cpl_target_usd column in profiles. Run the SQL migration."
+            : "Falta la columna leads_cpl_target_usd en profiles. Ejecuta el SQL que te comparto abajo."
+        );
       } else {
         setError(error.message);
       }
       setSavingTarget(false);
       return;
     }
-    setNotice("CPL objetivo guardado.");
+    setNotice(isEn ? "Target CPL saved." : "CPL objetivo guardado.");
     setSavingTarget(false);
   };
 
@@ -349,21 +358,25 @@ export default function LeadsEntitiesPanel() {
     <section className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
         <div>
-          <h2 className="text-xl font-semibold text-[#111827]">Entidades LEADS</h2>
+          <h2 className="text-xl font-semibold text-[#111827]">{isEn ? "LEADS entities" : "Entidades LEADS"}</h2>
           <p className="mt-1 text-sm text-slate-600">
-            Campañas, adsets y ads clasificados como LEADS con AI Analysis.
+            {isEn
+              ? "Campaigns, adsets, and ads classified as LEADS with AI analysis."
+              : "Campañas, adsets y ads clasificados como LEADS con AI Analysis."}
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
           <label className="block">
-            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">CPL objetivo (USD)</span>
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+              {isEn ? "Target CPL (USD)" : "CPL objetivo (USD)"}
+            </span>
             <input
               type="number"
               min="0"
               step="0.01"
               value={cplTarget}
               onChange={(event) => setCplTarget(event.target.value)}
-              placeholder="Ej: 3.50"
+              placeholder={isEn ? "Ex: 3.50" : "Ej: 3.50"}
               disabled={!cplEnabled}
               className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-[#1D293D] outline-none focus:border-[#1D293D] disabled:cursor-not-allowed disabled:bg-slate-100 sm:w-[160px]"
             />
@@ -374,22 +387,18 @@ export default function LeadsEntitiesPanel() {
             disabled={savingTarget || !cplEnabled}
             className="inline-flex items-center justify-center rounded-lg bg-[#1D293D] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {savingTarget ? "Guardando..." : "Guardar CPL"}
+            {savingTarget ? (isEn ? "Saving..." : "Guardando...") : isEn ? "Save CPL" : "Guardar CPL"}
           </button>
         </div>
       </div>
 
-      {error ? (
-        <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div>
-      ) : null}
-      {notice ? (
-        <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div>
-      ) : null}
+      {error ? <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</div> : null}
+      {notice ? <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{notice}</div> : null}
 
       <div className="mt-5 flex flex-wrap items-center gap-2">
-        <BreadcrumbButton label="Cuentas" active={viewLevel === "account"} onClick={() => goToLevel("account")} />
+        <BreadcrumbButton label={isEn ? "Accounts" : "Cuentas"} active={viewLevel === "account"} onClick={() => goToLevel("account")} />
         <span className="text-slate-300">/</span>
-        <BreadcrumbButton label="Campañas" active={viewLevel === "campaign"} onClick={() => goToLevel("campaign")} />
+        <BreadcrumbButton label={isEn ? "Campaigns" : "Campañas"} active={viewLevel === "campaign"} onClick={() => goToLevel("campaign")} />
         <span className="text-slate-300">/</span>
         <BreadcrumbButton label="Adsets" active={viewLevel === "adset"} onClick={() => goToLevel("adset")} />
         <span className="text-slate-300">/</span>
@@ -406,32 +415,32 @@ export default function LeadsEntitiesPanel() {
                   checked={allSelected}
                   onChange={toggleSelectAllInView}
                   className="h-4 w-4 rounded border-slate-300 text-[#1D293D] focus:ring-[#1D293D]"
-                  aria-label="Seleccionar todo"
+                  aria-label={isEn ? "Select all" : "Seleccionar todo"}
                 />
               </th>
-              <th className="pb-3 pr-4 font-semibold">Entidad</th>
-              <th className="pb-3 pr-4 font-semibold">Gasto (USD)</th>
+              <th className="pb-3 pr-4 font-semibold">{isEn ? "Entity" : "Entidad"}</th>
+              <th className="pb-3 pr-4 font-semibold">{isEn ? "Spend (USD)" : "Gasto (USD)"}</th>
               <th className="pb-3 pr-4 font-semibold">Leads</th>
-              <th className="pb-3 pr-4 font-semibold">Costo (USD)</th>
+              <th className="pb-3 pr-4 font-semibold">{isEn ? "Cost (USD)" : "Costo (USD)"}</th>
               <th className="pb-3 pr-4 font-semibold">CPM</th>
               <th className="pb-3 pr-4 font-semibold">CPC</th>
               <th className="pb-3 pr-4 font-semibold">CTR</th>
               <th className="pb-3 pr-4 font-semibold">AI Analysis</th>
               <th className="pb-3 pr-4 font-semibold">Confidence</th>
-              <th className="pb-3 font-semibold">Estado</th>
+              <th className="pb-3 font-semibold">{isEn ? "Status" : "Estado"}</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
                 <td colSpan={11} className="py-5 text-sm text-slate-500">
-                  Cargando entidades...
+                  {isEn ? "Loading entities..." : "Cargando entidades..."}
                 </td>
               </tr>
             ) : currentRows.length === 0 ? (
               <tr>
                 <td colSpan={11} className="py-5 text-sm text-slate-500">
-                  Sin datos LEADS para esta vista.
+                  {isEn ? "No LEADS data for this view." : "Sin datos LEADS para esta vista."}
                 </td>
               </tr>
             ) : (
@@ -464,34 +473,23 @@ export default function LeadsEntitiesPanel() {
                       />
                     </td>
                     <td className="py-3 pr-4">
-                      <button
-                        type="button"
-                        onClick={() => drillDown(row)}
-                        disabled={viewLevel === "ad"}
-                        className="text-left disabled:cursor-default"
-                      >
+                      <button type="button" onClick={() => drillDown(row)} disabled={viewLevel === "ad"} className="text-left disabled:cursor-default">
                         <p className="text-sm font-semibold text-[#111827] underline decoration-transparent underline-offset-2 hover:decoration-[#1D293D] hover:text-[#1D293D]">
-                          {row.entity_name || "Sin nombre"}
+                          {row.entity_name || (isEn ? "No name" : "Sin nombre")}
                         </p>
                         <p className="text-xs text-slate-500">
-                          {row.account_name || "Sin cuenta"} - {row.entity_id}
+                          {row.account_name || (isEn ? "No account" : "Sin cuenta")} - {row.entity_id}
                         </p>
                       </button>
                     </td>
                     <td className="py-3 pr-4 text-sm font-semibold text-[#1D293D]">{formatUsd(row.spend_usd)}</td>
                     <td className="py-3 pr-4 text-sm text-[#1D293D]">{row.results_count}</td>
-                    <td className="py-3 pr-4 text-sm text-[#1D293D]">
-                      {row.cost_per_result_usd != null ? formatUsd(row.cost_per_result_usd) : "-"}
-                    </td>
+                    <td className="py-3 pr-4 text-sm text-[#1D293D]">{row.cost_per_result_usd != null ? formatUsd(row.cost_per_result_usd) : "-"}</td>
                     <td className="py-3 pr-4 text-sm text-[#1D293D]">{row.cpm != null ? Number(row.cpm).toFixed(2) : "-"}</td>
                     <td className="py-3 pr-4 text-sm text-[#1D293D]">{row.cpc_usd != null ? formatUsd(row.cpc_usd) : "-"}</td>
                     <td className="py-3 pr-4 text-sm text-[#1D293D]">{row.ctr != null ? `${Number(row.ctr).toFixed(2)}%` : "-"}</td>
-                    <td className="py-3 pr-4 text-sm text-[#1D293D]">
-                      <AiAnalysisPill row={row} alertByTarget={alertByTarget} cplTargetValue={cplTargetValue} />
-                    </td>
-                    <td className="py-3 pr-4 text-sm text-[#1D293D]">
-                      {row.ai_confidence_score != null ? `${row.ai_confidence_score}%` : "-"}
-                    </td>
+                    <td className="py-3 pr-4 text-sm text-[#1D293D]"><AiAnalysisPill row={row} alertByTarget={alertByTarget} cplTargetValue={cplTargetValue} isEn={isEn} /></td>
+                    <td className="py-3 pr-4 text-sm text-[#1D293D]">{row.ai_confidence_score != null ? `${row.ai_confidence_score}%` : "-"}</td>
                     <td className="py-3 text-sm text-[#1D293D]">{row.effective_status || "-"}</td>
                   </tr>
                 );
@@ -510,13 +508,7 @@ function toggleInArray(items: string[], id: string) {
 
 function BreadcrumbButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold ${
-        active ? "bg-[#1D293D] text-white" : "text-slate-600 hover:bg-slate-100"
-      }`}
-    >
+    <button type="button" onClick={onClick} className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold ${active ? "bg-[#1D293D] text-white" : "text-slate-600 hover:bg-slate-100"}`}>
       {label}
     </button>
   );
@@ -526,47 +518,33 @@ function AiAnalysisPill({
   row,
   alertByTarget,
   cplTargetValue,
+  isEn,
 }: {
   row: PerfStateRow;
   alertByTarget: boolean;
   cplTargetValue: number | null;
+  isEn: boolean;
 }) {
   if (alertByTarget) {
-    const reason = `Sobre CPL objetivo (${formatUsd(cplTargetValue || 0)}). ${row.ai_reason_short || ""}`.trim();
-    return (
-      <span title={reason} className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700">
-        Alerta CPL
-      </span>
-    );
+    const reason = `${isEn ? "Above target CPL" : "Sobre CPL objetivo"} (${formatUsd(cplTargetValue || 0)}). ${row.ai_reason_short || ""}`.trim();
+    return <span title={reason} className="rounded-full bg-red-100 px-2.5 py-1 text-xs font-semibold text-red-700">{isEn ? "CPL Alert" : "Alerta CPL"}</span>;
   }
 
   const rec = row.ai_recommendation || "stable";
-  const label =
-    rec === "improving" ? "Mejorando" : rec === "scale" ? "Escalar" : rec === "worsening" ? "Empeorando" : "Estable";
-  const style =
-    rec === "improving"
-      ? "bg-emerald-100 text-emerald-700"
-      : rec === "scale"
-        ? "bg-sky-100 text-sky-700"
-        : rec === "worsening"
-          ? "bg-red-100 text-red-700"
-          : "bg-slate-100 text-slate-700";
+  const label = rec === "improving" ? (isEn ? "Improving" : "Mejorando") : rec === "scale" ? (isEn ? "Scale" : "Escalar") : rec === "worsening" ? (isEn ? "Worsening" : "Empeorando") : isEn ? "Stable" : "Estable";
+  const style = rec === "improving" ? "bg-emerald-100 text-emerald-700" : rec === "scale" ? "bg-sky-100 text-sky-700" : rec === "worsening" ? "bg-red-100 text-red-700" : "bg-slate-100 text-slate-700";
 
-  const reason = `${row.ai_reason_short || "Sin detalle"}${row.ai_action && row.ai_action !== "none" ? ` | ${mapAiAction(row.ai_action)}` : ""}`;
-  return (
-    <span title={reason} className={`rounded-full px-2.5 py-1 text-xs font-semibold ${style}`}>
-      {label}
-    </span>
-  );
+  const reason = `${row.ai_reason_short || (isEn ? "No details" : "Sin detalle")}${row.ai_action && row.ai_action !== "none" ? ` | ${mapAiAction(row.ai_action, isEn)}` : ""}`;
+  return <span title={reason} className={`rounded-full px-2.5 py-1 text-xs font-semibold ${style}`}>{label}</span>;
 }
 
-function mapAiAction(action: AiAction) {
-  if (action === "pause_ad") return "Sugerencia: pausar ad";
-  if (action === "pause_adset") return "Sugerencia: pausar adset";
-  if (action === "pause_campaign") return "Sugerencia: pausar campaña";
-  if (action === "pause_account") return "Sugerencia: pausar cuenta";
-  if (action === "scale_up") return "Sugerencia: escalar";
-  return "Sin sugerencia";
+function mapAiAction(action: AiAction, isEn: boolean) {
+  if (action === "pause_ad") return isEn ? "Suggestion: pause ad" : "Sugerencia: pausar ad";
+  if (action === "pause_adset") return isEn ? "Suggestion: pause adset" : "Sugerencia: pausar adset";
+  if (action === "pause_campaign") return isEn ? "Suggestion: pause campaign" : "Sugerencia: pausar campaña";
+  if (action === "pause_account") return isEn ? "Suggestion: pause account" : "Sugerencia: pausar cuenta";
+  if (action === "scale_up") return isEn ? "Suggestion: scale" : "Sugerencia: escalar";
+  return isEn ? "No suggestion" : "Sin sugerencia";
 }
 
 function formatUsd(amount: number) {

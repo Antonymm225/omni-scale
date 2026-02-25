@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
+import { useLocale } from "../../../providers/LocaleProvider";
 
 type BillingCycle = "monthly" | "yearly";
 
@@ -13,51 +14,37 @@ type Plan = {
   highlighted?: boolean;
   badge?: string;
   description: string;
+  descriptionEn: string;
   features: string[];
+  featuresEn: string[];
 };
 
 const plans: Plan[] = [
   {
     name: "Basic",
     monthlyPrice: 39,
-    description: "Para empezar y validar tus campanas.",
-    features: [
-      "1 usuario",
-      "1 BM",
-      "Multiples cuentas publicitarias",
-      "Multiples Fan Pages",
-      "Variantes y plantillas de campana",
-    ],
+    description: "Para empezar y validar tus campañas.",
+    descriptionEn: "To start and validate your campaigns.",
+    features: ["1 usuario", "1 BM", "Múltiples cuentas publicitarias", "Múltiples Fan Pages", "Variantes y plantillas de campaña"],
+    featuresEn: ["1 user", "1 BM", "Multiple ad accounts", "Multiple Fan Pages", "Campaign variants and templates"],
   },
   {
     name: "Standard",
     monthlyPrice: 59,
     highlighted: true,
     badge: "Mas vendida",
-    description: "Para equipos que escalan con automatizacion.",
-    features: [
-      "3 usuarios",
-      "Todo lo de Basic",
-      "Automatizaciones y reglas",
-      "Variantes y plantillas de campana",
-      "Creativos con AI",
-      "Respuestas a comentarios",
-      "3 BM",
-    ],
+    description: "Para equipos que escalan con automatización.",
+    descriptionEn: "For teams scaling with automation.",
+    features: ["3 usuarios", "Todo lo de Basic", "Automatizaciones y reglas", "Variantes y plantillas de campaña", "Creativos con AI", "Respuestas a comentarios", "3 BM"],
+    featuresEn: ["3 users", "Everything in Basic", "Automations and rules", "Campaign variants and templates", "AI creatives", "Comment replies", "3 BMs"],
   },
   {
     name: "Enterprise",
     monthlyPrice: 129,
-    description: "Para operacion avanzada y crecimiento sin limites.",
-    features: [
-      "Usuarios ilimitados",
-      "BM y cuentas ilimitadas",
-      "Automatizaciones",
-      "Plantillas",
-      "Creativos con AI",
-      "Respuestas a comentarios",
-      "Todo incluido",
-    ],
+    description: "Para operación avanzada y crecimiento sin límites.",
+    descriptionEn: "For advanced operations and unlimited growth.",
+    features: ["Usuarios ilimitados", "BM y cuentas ilimitadas", "Automatizaciones", "Plantillas", "Creativos con AI", "Respuestas a comentarios", "Todo incluido"],
+    featuresEn: ["Unlimited users", "Unlimited BMs and accounts", "Automations", "Templates", "AI creatives", "Comment replies", "Everything included"],
   },
 ];
 
@@ -67,6 +54,8 @@ function formatPrice(monthlyPrice: number, cycle: BillingCycle) {
 }
 
 export default function ChoosePlanPage() {
+  const { locale } = useLocale();
+  const isEn = locale === "en";
   const router = useRouter();
   const [billingCycle, setBillingCycle] = useState<BillingCycle>("monthly");
   const [errorMessage, setErrorMessage] = useState("");
@@ -79,11 +68,10 @@ export default function ChoosePlanPage() {
 
   const subtitle = useMemo(() => {
     if (billingCycle === "yearly") {
-      return "Facturacion anual activa: 20% OFF aplicado";
+      return isEn ? "Yearly billing active: 20% OFF applied" : "Facturacion anual activa: 20% OFF aplicado";
     }
-
-    return "Elige el plan ideal para tu negocio";
-  }, [billingCycle]);
+    return isEn ? "Choose the ideal plan for your business" : "Elige el plan ideal para tu negocio";
+  }, [billingCycle, isEn]);
 
   const handleSelectPlan = async (planName: string) => {
     setErrorMessage("");
@@ -95,7 +83,7 @@ export default function ChoosePlanPage() {
     } = await supabase.auth.getUser();
 
     if (userError || !user) {
-      setErrorMessage("No se pudo identificar al usuario. Vuelve a iniciar sesion.");
+      setErrorMessage(isEn ? "Could not identify user. Please sign in again." : "No se pudo identificar al usuario. Vuelve a iniciar sesion.");
       setSavingPlan(null);
       return;
     }
@@ -113,11 +101,7 @@ export default function ChoosePlanPage() {
     }
 
     if (!updatedRows || updatedRows.length === 0) {
-      const { error: insertError } = await supabase.from("user_onboarding").insert({
-        user_id: user.id,
-        plan: planName,
-      });
-
+      const { error: insertError } = await supabase.from("user_onboarding").insert({ user_id: user.id, plan: planName });
       if (insertError) {
         setErrorMessage(insertError.message);
         setSavingPlan(null);
@@ -134,116 +118,56 @@ export default function ChoosePlanPage() {
         <div className="mb-8 grid w-full grid-cols-[1fr_auto_1fr] items-center">
           <div />
           <div className="flex justify-center">
-            <Image
-              src="/omniscale-color-logo-complete.png"
-              alt="OMNI Scale"
-              width={260}
-              height={144}
-              priority
-              className="h-auto w-[200px] sm:w-[240px]"
-            />
+            <Image src="/omniscale-color-logo-complete.png" alt="OMNI Scale" width={260} height={144} priority className="h-auto w-[200px] sm:w-[240px]" />
           </div>
           <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={handleSignOut}
-              className="inline-flex translate-x-1 items-center gap-1.5 rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50"
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                className="h-3.5 w-3.5"
-                aria-hidden="true"
-              >
+            <button type="button" onClick={handleSignOut} className="inline-flex translate-x-1 items-center gap-1.5 rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:bg-red-50">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-3.5 w-3.5" aria-hidden="true">
                 <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
                 <path d="M16 17l5-5-5-5" />
                 <path d="M21 12H9" />
               </svg>
-              Cerrar sesion
+              {isEn ? "Sign out" : "Cerrar sesion"}
             </button>
           </div>
         </div>
 
         <div className="text-center">
-          <h1 className="text-3xl font-bold tracking-tight text-[#1D293D] sm:text-4xl">
-            Elige tu plan
-          </h1>
+          <h1 className="text-3xl font-bold tracking-tight text-[#1D293D] sm:text-4xl">{isEn ? "Choose your plan" : "Elige tu plan"}</h1>
           <p className="mt-3 text-sm text-slate-600 sm:text-base">{subtitle}</p>
         </div>
 
         <div className="mx-auto mt-8 flex w-fit items-center rounded-full border border-slate-200 bg-white p-1 shadow-sm">
-          <button
-            type="button"
-            onClick={() => setBillingCycle("monthly")}
-            className={`rounded-full px-4 py-2 text-sm font-semibold transition sm:px-5 ${
-              billingCycle === "monthly"
-                ? "bg-[#1D293D] text-white"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            Mensual
-          </button>
-          <button
-            type="button"
-            onClick={() => setBillingCycle("yearly")}
-            className={`rounded-full px-4 py-2 text-sm font-semibold transition sm:px-5 ${
-              billingCycle === "yearly"
-                ? "bg-[#1D293D] text-white"
-                : "text-slate-600 hover:text-slate-900"
-            }`}
-          >
-            Anual
-          </button>
-          <span className="ml-2 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">
-            20% OFF
-          </span>
+          <button type="button" onClick={() => setBillingCycle("monthly")} className={`rounded-full px-4 py-2 text-sm font-semibold transition sm:px-5 ${billingCycle === "monthly" ? "bg-[#1D293D] text-white" : "text-slate-600 hover:text-slate-900"}`}>{isEn ? "Monthly" : "Mensual"}</button>
+          <button type="button" onClick={() => setBillingCycle("yearly")} className={`rounded-full px-4 py-2 text-sm font-semibold transition sm:px-5 ${billingCycle === "yearly" ? "bg-[#1D293D] text-white" : "text-slate-600 hover:text-slate-900"}`}>{isEn ? "Yearly" : "Anual"}</button>
+          <span className="ml-2 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700">20% OFF</span>
         </div>
 
-        {errorMessage && (
-          <p className="mt-4 text-center text-sm text-red-600">{errorMessage}</p>
-        )}
+        {errorMessage && <p className="mt-4 text-center text-sm text-red-600">{errorMessage}</p>}
 
         <div className="mt-10 grid grid-cols-1 gap-6 lg:grid-cols-3">
           {plans.map((plan) => {
             const price = formatPrice(plan.monthlyPrice, billingCycle);
+            const description = isEn ? plan.descriptionEn : plan.description;
+            const features = isEn ? plan.featuresEn : plan.features;
 
             return (
-              <article
-                key={plan.name}
-                className={`relative flex h-full flex-col rounded-2xl border bg-white p-6 shadow-sm transition ${
-                  plan.highlighted
-                    ? "border-[#1D293D] shadow-xl ring-2 ring-[#1D293D]/15"
-                    : "border-slate-200"
-                }`}
-              >
-                {plan.badge && (
-                  <span className="absolute -top-3 left-6 rounded-full bg-[#1D293D] px-3 py-1 text-xs font-semibold text-white">
-                    {plan.badge}
-                  </span>
-                )}
+              <article key={plan.name} className={`relative flex h-full flex-col rounded-2xl border bg-white p-6 shadow-sm transition ${plan.highlighted ? "border-[#1D293D] shadow-xl ring-2 ring-[#1D293D]/15" : "border-slate-200"}`}>
+                {plan.badge && <span className="absolute -top-3 left-6 rounded-full bg-[#1D293D] px-3 py-1 text-xs font-semibold text-white">{isEn ? "Most popular" : plan.badge}</span>}
 
                 <h2 className="text-xl font-bold text-[#1D293D]">{plan.name}</h2>
-                <p className="mt-2 text-sm text-slate-600">{plan.description}</p>
+                <p className="mt-2 text-sm text-slate-600">{description}</p>
 
                 <div className="mt-5">
                   <p className="flex items-end gap-1">
-                    <span className="text-4xl font-bold tracking-tight text-[#1D293D]">
-                      ${price}
-                    </span>
-                    <span className="mb-1 text-sm text-slate-500">/mes</span>
+                    <span className="text-4xl font-bold tracking-tight text-[#1D293D]">${price}</span>
+                    <span className="mb-1 text-sm text-slate-500">/{isEn ? "mo" : "mes"}</span>
                   </p>
-                  {billingCycle === "yearly" && (
-                    <p className="mt-1 text-xs font-medium text-emerald-700">
-                      Antes ${plan.monthlyPrice}/mes
-                    </p>
-                  )}
+                  {billingCycle === "yearly" && <p className="mt-1 text-xs font-medium text-emerald-700">{isEn ? "Before" : "Antes"} ${plan.monthlyPrice}/{isEn ? "mo" : "mes"}</p>}
                 </div>
 
                 <ul className="mt-6 space-y-3 text-sm text-slate-700">
-                  {plan.features.map((feature) => (
+                  {features.map((feature) => (
                     <li key={feature} className="flex items-start gap-2">
                       <span className="mt-0.5 text-[#1D293D]">•</span>
                       <span>{feature}</span>
@@ -255,13 +179,9 @@ export default function ChoosePlanPage() {
                   type="button"
                   onClick={() => handleSelectPlan(plan.name)}
                   disabled={savingPlan !== null}
-                  className={`mt-7 w-full rounded-xl px-4 py-3 text-sm font-semibold transition ${
-                    plan.highlighted
-                      ? "bg-[#1D293D] text-white hover:opacity-90"
-                      : "border border-slate-300 text-[#1D293D] hover:border-[#1D293D]"
-                  } disabled:cursor-not-allowed disabled:opacity-70`}
+                  className={`mt-7 w-full rounded-xl px-4 py-3 text-sm font-semibold transition ${plan.highlighted ? "bg-[#1D293D] text-white hover:opacity-90" : "border border-slate-300 text-[#1D293D] hover:border-[#1D293D]"} disabled:cursor-not-allowed disabled:opacity-70`}
                 >
-                  {savingPlan === plan.name ? "Guardando..." : `Elegir ${plan.name}`}
+                  {savingPlan === plan.name ? (isEn ? "Saving..." : "Guardando...") : `${isEn ? "Choose" : "Elegir"} ${plan.name}`}
                 </button>
               </article>
             );

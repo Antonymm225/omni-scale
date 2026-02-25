@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
-import { localizePublicPath } from "../../lib/locale";
+import { localizePublicPath, readCookie, TIMEZONE_COOKIE } from "../../lib/locale";
 import { useLocale } from "../../providers/LocaleProvider";
 import { useTheme } from "../../providers/ThemeProvider";
 import LocaleToggle from "../../components/locale-toggle";
@@ -11,6 +11,7 @@ export default function SignUp() {
   const { locale } = useLocale();
   const { theme } = useTheme();
   const isEn = locale === "en";
+  const isDark = theme === "dark";
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -33,7 +34,12 @@ export default function SignUp() {
         email,
         password,
         options: {
-          data: { name, language_code: locale, theme_mode: theme },
+          data: {
+            name,
+            language_code: locale,
+            theme_mode: "light",
+            timezone_name: readCookie(TIMEZONE_COOKIE) || "UTC",
+          },
           emailRedirectTo: `${baseUrl}${localizePublicPath(locale, "/verify-email")}`,
         },
       });
@@ -89,16 +95,26 @@ export default function SignUp() {
         </div>
       </div>
 
-      <div className="flex w-full items-center justify-center bg-[#F5F5F5] p-8 lg:w-1/2">
-        <div className="w-full max-w-md space-y-6 rounded-xl border border-slate-200 bg-white p-10 shadow-sm">
+      <div
+        className={`flex w-full items-center justify-center p-8 lg:w-1/2 ${
+          isDark ? "bg-[#0a1322]" : "bg-[#F5F5F5]"
+        }`}
+      >
+        <div
+          className={`w-full max-w-md space-y-6 rounded-xl border p-10 ${
+            isDark
+              ? "border-slate-700/80 bg-[linear-gradient(165deg,#0f1b33_0%,#121a2a_45%,#0f172a_100%)] shadow-[0_28px_70px_rgba(2,6,23,0.55)]"
+              : "border-slate-200 bg-white shadow-sm"
+          }`}
+        >
           <div className="flex justify-end">
             <LocaleToggle />
           </div>
           <div className="mb-6 text-center">
-            <h2 className="mb-2 text-3xl font-semibold text-[#26251E]">
+            <h2 className={`mb-2 text-3xl font-semibold ${isDark ? "text-slate-100" : "text-[#26251E]"}`}>
               {isEn ? "Create your account" : "Crea tu cuenta"}
             </h2>
-            <p className="text-sm text-slate-600">
+            <p className={`text-sm ${isDark ? "text-slate-300" : "text-slate-600"}`}>
               {isEn ? "Start your 7-day free trial" : "Comienza tu prueba gratuita de 7 dias"}
             </p>
           </div>
@@ -130,7 +146,11 @@ export default function SignUp() {
 
           <button
             type="button"
-            className="flex w-full items-center justify-center gap-3 rounded-lg border border-slate-300 py-2.5 text-sm font-medium transition hover:bg-slate-50"
+            className={`flex w-full items-center justify-center gap-3 rounded-lg border py-2.5 text-sm font-medium transition ${
+              isDark
+                ? "border-slate-600 text-slate-100 hover:bg-slate-800/70"
+                : "border-slate-300 hover:bg-slate-50"
+            }`}
           >
             <img
               src="https://www.svgrepo.com/show/475656/google-color.svg"
@@ -141,16 +161,16 @@ export default function SignUp() {
           </button>
 
           <div className="flex items-center gap-4">
-            <div className="h-px flex-1 bg-slate-200" />
+            <div className={`h-px flex-1 ${isDark ? "bg-slate-600" : "bg-slate-200"}`} />
             <span className="text-xs text-slate-400">
               {isEn ? "Or continue with email" : "O continuar con correo"}
             </span>
-            <div className="h-px flex-1 bg-slate-200" />
+            <div className={`h-px flex-1 ${isDark ? "bg-slate-600" : "bg-slate-200"}`} />
           </div>
 
           <form onSubmit={handleSignup} className="space-y-4">
             <div>
-              <label className="text-sm font-medium text-slate-700">
+              <label className={`text-sm font-medium ${isDark ? "text-slate-200" : "text-slate-700"}`}>
                 {isEn ? "Full name" : "Nombre completo"}
               </label>
               <input
@@ -159,24 +179,36 @@ export default function SignUp() {
                 required
                 value={name}
                 onChange={(event) => setName(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                className={`mt-1 w-full rounded-lg border px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 ${
+                  isDark
+                    ? "border-slate-600 text-slate-100 placeholder:text-slate-400 focus:ring-slate-400"
+                    : "border-slate-300 focus:ring-black"
+                }`}
               />
             </div>
 
             <div>
-              <label className="text-sm font-medium text-slate-700">{isEn ? "Email" : "Correo electronico"}</label>
+              <label className={`text-sm font-medium ${isDark ? "text-slate-200" : "text-slate-700"}`}>
+                {isEn ? "Email" : "Correo electronico"}
+              </label>
               <input
                 type="email"
                 placeholder={isEn ? "Enter your email" : "Ingresa tu correo"}
                 required
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                className={`mt-1 w-full rounded-lg border px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 ${
+                  isDark
+                    ? "border-slate-600 text-slate-100 placeholder:text-slate-400 focus:ring-slate-400"
+                    : "border-slate-300 focus:ring-black"
+                }`}
               />
             </div>
 
             <div>
-              <label className="text-sm font-medium text-slate-700">{isEn ? "Password" : "Contrasena"}</label>
+              <label className={`text-sm font-medium ${isDark ? "text-slate-200" : "text-slate-700"}`}>
+                {isEn ? "Password" : "Contrasena"}
+              </label>
               <input
                 type="password"
                 placeholder={isEn ? "Create your password" : "Crea una contrasena"}
@@ -190,9 +222,13 @@ export default function SignUp() {
                 }
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                className={`mt-1 w-full rounded-lg border px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 ${
+                  isDark
+                    ? "border-slate-600 text-slate-100 placeholder:text-slate-400 focus:ring-slate-400"
+                    : "border-slate-300 focus:ring-black"
+                }`}
               />
-              <p className="mt-1 text-xs text-slate-400">
+              <p className={`mt-1 text-xs ${isDark ? "text-slate-400" : "text-slate-400"}`}>
                 {isEn
                   ? "Minimum 8 characters, at least one letter and one number."
                   : "Minimo 8 caracteres, al menos una letra y un numero."}
@@ -208,24 +244,36 @@ export default function SignUp() {
             </button>
           </form>
 
-          <div className="text-center text-sm text-slate-600">
+          <div className={`text-center text-sm ${isDark ? "text-slate-300" : "text-slate-600"}`}>
             {isEn ? "Already have an account?" : "Ya tienes una cuenta?"}{" "}
-            <a href={localizePublicPath(locale, "/signin")} className="font-medium text-black hover:underline">
+            <a
+              href={localizePublicPath(locale, "/signin")}
+              className={`font-medium hover:underline ${isDark ? "text-slate-100" : "text-black"}`}
+            >
               {isEn ? "Sign in" : "Inicia sesion"}
             </a>
           </div>
 
           <p className="text-center text-xs leading-relaxed text-slate-400">
             {isEn ? "By signing up, you accept our" : "Al registrarte, aceptas nuestros"}{" "}
-            <a href={localizePublicPath(locale, "/terms-and-conditions")} className="underline hover:text-black">
+            <a
+              href={localizePublicPath(locale, "/terms-and-conditions")}
+              className={`underline ${isDark ? "hover:text-white" : "hover:text-black"}`}
+            >
               {isEn ? "Terms and Conditions" : "Terminos y Condiciones"}
             </a>{" "}
             {isEn ? "and" : "y"}{" "}
-            <a href={localizePublicPath(locale, "/privacy-policy")} className="underline hover:text-black">
+            <a
+              href={localizePublicPath(locale, "/privacy-policy")}
+              className={`underline ${isDark ? "hover:text-white" : "hover:text-black"}`}
+            >
               {isEn ? "Privacy Policy" : "Politica de Privacidad"}
             </a>{" "}
             {isEn ? "and" : "y"}{" "}
-            <a href={localizePublicPath(locale, "/data-deletion-policy")} className="underline hover:text-black">
+            <a
+              href={localizePublicPath(locale, "/data-deletion-policy")}
+              className={`underline ${isDark ? "hover:text-white" : "hover:text-black"}`}
+            >
               {isEn ? "Data Deletion Policy" : "Politica de Eliminacion de Datos"}
             </a>
             .

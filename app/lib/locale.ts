@@ -1,4 +1,5 @@
 export const LOCALE_COOKIE = "omni_locale";
+export const TIMEZONE_COOKIE = "omni_timezone";
 
 export type AppLocale = "es" | "en";
 
@@ -44,6 +45,23 @@ export function localizePublicPath(locale: AppLocale, path: string) {
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   if (normalizedPath === "/") return `/${localePrefix(locale)}`;
   return `/${localePrefix(locale)}${normalizedPath}`;
+}
+
+export function readCookie(name: string) {
+  if (typeof document === "undefined") return null;
+  const prefix = `${name}=`;
+  const match = document.cookie
+    .split("; ")
+    .find((entry) => entry.startsWith(prefix));
+  if (!match) return null;
+  return decodeURIComponent(match.slice(prefix.length));
+}
+
+export function writeCookie(name: string, value: string) {
+  if (typeof document === "undefined") return;
+  document.cookie = `${name}=${encodeURIComponent(
+    value
+  )}; path=/; max-age=31536000; SameSite=Lax`;
 }
 
 export function inferLocaleFromCountry(countryCode: string | null | undefined): AppLocale {

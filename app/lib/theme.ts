@@ -1,5 +1,3 @@
-export const THEME_COOKIE = "omni_theme";
-
 export type AppTheme = "light" | "dark";
 
 export function normalizeTheme(value: string | null | undefined): AppTheme | null {

@@ -47,6 +47,7 @@ const TIMEZONE_OPTIONS = [
 
 export default function Page() {
   const { locale, setLocale } = useLocale();
+  const isEn = locale === "en";
   const router = useRouter();
   const [uploading, setUploading] = useState(false);
   const [resettingData, setResettingData] = useState(false);
@@ -79,7 +80,7 @@ export default function Page() {
         (user.user_metadata?.full_name as string | undefined) ||
         (user.user_metadata?.name as string | undefined) ||
         user.email?.split("@")[0] ||
-        "Usuario";
+        isEn ? "User" : "Usuario";
 
       const { data: profileRow } = await supabase
         .from("profiles")
@@ -148,12 +149,12 @@ export default function Page() {
 
     const allowed = ["image/jpeg", "image/png", "image/webp"];
     if (!allowed.includes(file.type)) {
-      setError("Formato no permitido. Usa JPG, PNG o WEBP.");
+      setError(isEn ? "Unsupported format. Use JPG, PNG, or WEBP." : "Formato no permitido. Usa JPG, PNG o WEBP.");
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
-      setError("La imagen no debe superar 5MB.");
+      setError(isEn ? "Image must be 5MB or smaller." : "La imagen no debe superar 5MB.");
       return;
     }
 
@@ -164,7 +165,7 @@ export default function Page() {
       } = await supabase.auth.getUser();
 
       if (!user) {
-        throw new Error("No se pudo validar la sesion.");
+        throw new Error(isEn ? "Could not validate session." : "No se pudo validar la sesion.");
       }
 
       const extension = file.name.split(".").pop()?.toLowerCase() || "jpg";
@@ -190,9 +191,9 @@ export default function Page() {
       }
 
       setProfile((prev) => ({ ...prev, avatarUrl: publicUrl }));
-      setNotice("Foto de perfil actualizada.");
+      setNotice(isEn ? "Profile photo updated." : "Foto de perfil actualizada.");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "No se pudo subir la foto.");
+      setError(err instanceof Error ? err.message : isEn ? "Could not upload photo." : "No se pudo subir la foto.");
     } finally {
       setUploading(false);
       event.target.value = "";
@@ -208,7 +209,7 @@ export default function Page() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (!user) throw new Error("No se pudo validar la sesion.");
+      if (!user) throw new Error(isEn ? "Could not validate session." : "No se pudo validar la sesion.");
 
       const { error: upsertError } = await supabase.from("profiles").upsert(
         {
@@ -221,9 +222,13 @@ export default function Page() {
       );
       if (upsertError) throw new Error(upsertError.message);
 
-      setNotice("Zona horaria guardada. El reporting usará esta configuración.");
+      setNotice(
+        isEn
+          ? "Timezone saved. Reporting will use this setting."
+          : "Zona horaria guardada. El reporting usará esta configuración."
+      );
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "No se pudo guardar la zona horaria.");
+      setError(err instanceof Error ? err.message : isEn ? "Could not save timezone." : "No se pudo guardar la zona horaria.");
     } finally {
       setSavingTimezone(false);
     }
@@ -238,7 +243,7 @@ export default function Page() {
         data: { user },
       } = await supabase.auth.getUser();
 
-      if (!user) throw new Error("No se pudo validar la sesion.");
+      if (!user) throw new Error(isEn ? "Could not validate session." : "No se pudo validar la sesion.");
 
       const { error: upsertError } = await supabase.from("profiles").upsert(
         {
@@ -252,10 +257,10 @@ export default function Page() {
       if (upsertError) throw new Error(upsertError.message);
 
       setLocale(profile.languageCode);
-      setNotice("Idioma guardado. Recargando...");
+      setNotice(isEn ? "Language saved. Reloading..." : "Idioma guardado. Recargando...");
       window.location.reload();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "No se pudo guardar el idioma.");
+      setError(err instanceof Error ? err.message : isEn ? "Could not save language." : "No se pudo guardar el idioma.");
     } finally {
       setSavingLanguage(false);
     }
@@ -266,12 +271,14 @@ export default function Page() {
     setNotice(null);
 
     if (resetConfirm.trim().toUpperCase() !== "BORRAR") {
-      setError('Escribe "BORRAR" para confirmar el borrado total.');
+      setError(isEn ? 'Type "BORRAR" to confirm full reset.' : 'Escribe "BORRAR" para confirmar el borrado total.');
       return;
     }
 
     const confirmed = window.confirm(
-      "Esta accion borrara toda tu data y reiniciara tu workspace. ¿Deseas continuar?"
+      isEn
+        ? "This action will delete all your data and reset your workspace. Continue?"
+        : "Esta accion borrara toda tu data y reiniciara tu workspace. ¿Deseas continuar?"
     );
     if (!confirmed) {
       return;
@@ -287,15 +294,15 @@ export default function Page() {
 
       const payload = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
       if (!response.ok || !payload.ok) {
-        throw new Error(payload.error || "No se pudo borrar la data.");
+        throw new Error(payload.error || (isEn ? "Could not reset data." : "No se pudo borrar la data."));
       }
 
-      setNotice("Se borraron tus datos. Redirigiendo a setup...");
+      setNotice(isEn ? "Data reset completed. Redirecting to setup..." : "Se borraron tus datos. Redirigiendo a setup...");
       setTimeout(() => {
         router.replace("/setup/business-type");
       }, 700);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "No se pudo borrar la data.");
+      setError(err instanceof Error ? err.message : isEn ? "Could not reset data." : "No se pudo borrar la data.");
     } finally {
       setResettingData(false);
     }
@@ -306,12 +313,18 @@ export default function Page() {
     setNotice(null);
 
     if (deleteConfirm.trim().toUpperCase() !== "ELIMINAR") {
-      setError('Escribe "ELIMINAR" para confirmar la eliminación de la cuenta.');
+      setError(
+        isEn
+          ? 'Type "ELIMINAR" to confirm account deletion.'
+          : 'Escribe "ELIMINAR" para confirmar la eliminación de la cuenta.'
+      );
       return;
     }
 
     const confirmed = window.confirm(
-      "Tu cuenta se eliminara de inmediato y no quedara data ni acceso. Esta accion no se puede deshacer. ¿Continuar?"
+      isEn
+        ? "Your account will be deleted immediately with all access and data. This cannot be undone. Continue?"
+        : "Tu cuenta se eliminara de inmediato y no quedara data ni acceso. Esta accion no se puede deshacer. ¿Continuar?"
     );
     if (!confirmed) {
       return;
@@ -327,13 +340,13 @@ export default function Page() {
 
       const payload = (await response.json().catch(() => ({}))) as { ok?: boolean; error?: string };
       if (!response.ok || !payload.ok) {
-        throw new Error(payload.error || "No se pudo eliminar la cuenta.");
+        throw new Error(payload.error || (isEn ? "Could not delete account." : "No se pudo eliminar la cuenta."));
       }
 
       await supabase.auth.signOut();
       router.replace("/signup");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "No se pudo eliminar la cuenta.");
+      setError(err instanceof Error ? err.message : isEn ? "Could not delete account." : "No se pudo eliminar la cuenta.");
       setDeletingAccount(false);
     }
   };
@@ -341,7 +354,7 @@ export default function Page() {
   return (
     <main className="min-h-screen bg-[#f3f5f9] px-4 py-10 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-5xl rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-10">
-        <h1 className="text-3xl font-semibold text-[#111827] sm:text-4xl">Mi cuenta</h1>
+        <h1 className="text-3xl font-semibold text-[#111827] sm:text-4xl">{isEn ? "My account" : "Mi cuenta"}</h1>
 
         {error ? (
           <div className="mt-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</div>
@@ -355,7 +368,7 @@ export default function Page() {
             {profile.avatarUrl ? (
               <img
                 src={profile.avatarUrl}
-                alt="Foto de perfil"
+                alt={isEn ? "Profile photo" : "Foto de perfil"}
                 className="h-14 w-14 rounded-full border border-slate-200 object-cover"
               />
             ) : (
@@ -368,7 +381,7 @@ export default function Page() {
               <p className="text-base font-semibold text-[#111827]">{profile.name}</p>
               <p className="mt-0.5 text-sm text-slate-600">{profile.email || "-"}</p>
               <label className="mt-2 inline-flex cursor-pointer items-center rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">
-                {uploading ? "Subiendo..." : "Subir foto"}
+                {uploading ? (isEn ? "Uploading..." : "Subiendo...") : (isEn ? "Upload photo" : "Subir foto")}
                 <input
                   type="file"
                   accept="image/png,image/jpeg,image/webp"
@@ -398,7 +411,7 @@ export default function Page() {
               <path d="M16 17l5-5-5-5" />
               <path d="M21 12H9" />
             </svg>
-            Cerrar sesión
+            {isEn ? "Sign out" : "Cerrar sesión"}
           </button>
         </div>
         <div className="mt-2 flex justify-end">
@@ -407,22 +420,24 @@ export default function Page() {
             onClick={() => setShowDeleteAccountBox((prev) => !prev)}
             className="text-xs text-slate-500 underline decoration-transparent underline-offset-2 transition hover:text-red-600 hover:decoration-red-300"
           >
-            Eliminar cuenta
+            {isEn ? "Delete account" : "Eliminar cuenta"}
           </button>
         </div>
 
         {showDeleteAccountBox ? (
           <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-4">
-            <p className="text-sm font-semibold text-red-700">Eliminar cuenta permanentemente</p>
+            <p className="text-sm font-semibold text-red-700">{isEn ? "Delete account permanently" : "Eliminar cuenta permanentemente"}</p>
             <p className="mt-1 text-xs text-red-700">
-              El borrado es inmediato. Se eliminará tu cuenta y no quedará data, accesos ni credenciales.
+              {isEn
+                ? "Deletion is immediate. Your account, access, credentials, and data will be removed."
+                : "El borrado es inmediato. Se eliminará tu cuenta y no quedará data, accesos ni credenciales."}
             </p>
             <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
               <input
                 type="text"
                 value={deleteConfirm}
                 onChange={(event) => setDeleteConfirm(event.target.value)}
-                placeholder='Escribe "ELIMINAR"'
+                placeholder={isEn ? 'Type "ELIMINAR"' : 'Escribe "ELIMINAR"'}
                 className="w-full rounded-lg border border-red-300 bg-white px-3 py-2 text-sm text-red-700 outline-none ring-red-300 focus:ring-2 sm:max-w-xs"
               />
               <button
@@ -432,38 +447,44 @@ export default function Page() {
                 className="inline-flex items-center justify-center rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-800 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {deletingAccount
-                  ? "Eliminando..."
+                  ? (isEn ? "Deleting..." : "Eliminando...")
                   : deleteCountdown > 0
-                    ? `Espera ${deleteCountdown}s`
-                    : "Eliminar cuenta ahora"}
+                    ? `${isEn ? "Wait" : "Espera"} ${deleteCountdown}s`
+                    : (isEn ? "Delete account now" : "Eliminar cuenta ahora")}
               </button>
             </div>
             {deleteCountdown > 0 ? (
               <p className="mt-2 text-xs text-red-700">
-                Medida de seguridad activa. Podrás confirmar en {deleteCountdown}s.
+                {isEn
+                  ? `Security delay active. You can confirm in ${deleteCountdown}s.`
+                  : `Medida de seguridad activa. Podrás confirmar en ${deleteCountdown}s.`}
               </p>
             ) : null}
           </div>
         ) : null}
 
         <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
-          <p className="text-sm font-semibold text-[#111827]">Facturación y plan</p>
+          <p className="text-sm font-semibold text-[#111827]">{isEn ? "Billing and plan" : "Facturación y plan"}</p>
           <p className="mt-1 text-xs text-slate-500">
-            Revisa cobros, cambia de plan y gestiona tu membresía.
+            {isEn
+              ? "Review charges, change your plan, and manage membership."
+              : "Revisa cobros, cambia de plan y gestiona tu membresía."}
           </p>
           <button
             type="button"
             onClick={() => router.push("/mi-cuenta/facturacion")}
             className="mt-3 inline-flex items-center justify-center rounded-lg bg-[#1D293D] px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
           >
-            Ir a facturación
+            {isEn ? "Go to billing" : "Ir a facturación"}
           </button>
         </div>
 
         <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
-          <p className="text-sm font-semibold text-[#111827]">Idioma de la aplicación</p>
+          <p className="text-sm font-semibold text-[#111827]">{isEn ? "App language" : "Idioma de la aplicación"}</p>
           <p className="mt-1 text-xs text-slate-500">
-            Este idioma será tu predeterminado al iniciar sesión.
+            {isEn
+              ? "This will be your default language when signing in."
+              : "Este idioma será tu predeterminado al iniciar sesión."}
           </p>
           <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
             <select
@@ -485,15 +506,17 @@ export default function Page() {
               disabled={savingLanguage}
               className="inline-flex items-center justify-center rounded-lg bg-[#1D293D] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {savingLanguage ? "Guardando..." : "Guardar idioma"}
+              {savingLanguage ? (isEn ? "Saving..." : "Guardando...") : (isEn ? "Save language" : "Guardar idioma")}
             </button>
           </div>
         </div>
 
         <div className="mt-5 rounded-xl border border-slate-200 bg-white p-4 sm:p-5">
-          <p className="text-sm font-semibold text-[#111827]">Zona horaria para reporting</p>
+          <p className="text-sm font-semibold text-[#111827]">{isEn ? "Reporting timezone" : "Zona horaria para reporting"}</p>
           <p className="mt-1 text-xs text-slate-500">
-            Define cómo se calcula Hoy/Ayer y el cierre diario de métricas.
+            {isEn
+              ? "Defines how Today/Yesterday and daily metric close are calculated."
+              : "Define cómo se calcula Hoy/Ayer y el cierre diario de métricas."}
           </p>
           <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
             <select
@@ -515,23 +538,24 @@ export default function Page() {
               disabled={savingTimezone}
               className="inline-flex items-center justify-center rounded-lg bg-[#1D293D] px-4 py-2 text-sm font-semibold text-white hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {savingTimezone ? "Guardando..." : "Guardar zona horaria"}
+              {savingTimezone ? (isEn ? "Saving..." : "Guardando...") : (isEn ? "Save timezone" : "Guardar zona horaria")}
             </button>
           </div>
         </div>
 
         <div className="mt-5 rounded-xl border border-red-200 bg-red-50 p-4 sm:p-5">
-          <p className="text-sm font-semibold text-red-700">Zona de peligro</p>
+          <p className="text-sm font-semibold text-red-700">{isEn ? "Danger zone" : "Zona de peligro"}</p>
           <p className="mt-1 text-xs text-red-600">
-            Borra toda tu data de OMNI Scale (assets, métricas, onboarding e integraciones) y reinicia desde cero
-            como cuenta recién creada.
+            {isEn
+              ? "Delete all OMNI Scale data (assets, metrics, onboarding, integrations) and restart from scratch as a new account."
+              : "Borra toda tu data de OMNI Scale (assets, métricas, onboarding e integraciones) y reinicia desde cero como cuenta recién creada."}
           </p>
           <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
             <input
               type="text"
               value={resetConfirm}
               onChange={(event) => setResetConfirm(event.target.value)}
-              placeholder='Escribe "BORRAR"'
+              placeholder={isEn ? 'Type "BORRAR"' : 'Escribe "BORRAR"'}
               className="w-full rounded-lg border border-red-300 bg-white px-3 py-2 text-sm text-red-700 outline-none ring-red-300 focus:ring-2 sm:max-w-xs"
             />
             <button
@@ -540,7 +564,7 @@ export default function Page() {
               disabled={resettingData}
               className="inline-flex items-center justify-center rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              {resettingData ? "Borrando..." : "Borrar data completa"}
+              {resettingData ? (isEn ? "Deleting..." : "Borrando...") : (isEn ? "Delete all data" : "Borrar data completa")}
             </button>
           </div>
         </div>

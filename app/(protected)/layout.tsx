@@ -311,7 +311,7 @@ export default function ProtectedLayout({
   children: React.ReactNode;
 }) {
   const { locale, setLocale } = useLocale();
-  const { theme } = useTheme();
+  const { theme, setTheme } = useTheme();
   const router = useRouter();
   const pathname = usePathname();
   const [loading, setLoading] = useState(true);
@@ -360,6 +360,9 @@ export default function ProtectedLayout({
 
       if (existingLocale === "es" || existingLocale === "en") {
         setLocale(existingLocale);
+      }
+      if (existingTheme === "dark" || existingTheme === "light") {
+        setTheme(existingTheme);
       }
 
       const hasTimezone = Boolean(existingTimezone.trim());

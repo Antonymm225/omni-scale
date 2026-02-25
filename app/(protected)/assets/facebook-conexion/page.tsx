@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { supabase } from "../../../lib/supabaseClient";
+import { useLocale } from "../../../providers/LocaleProvider";
 
 type FacebookConnection = {
   facebook_name: string | null;
@@ -50,6 +51,8 @@ type DisplayItem = {
 };
 
 export default function FacebookConexionPage() {
+  const { locale } = useLocale();
+  const isEn = locale === "en";
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -77,9 +80,9 @@ export default function FacebookConexionPage() {
     const message = searchParams.get("message");
 
     if (status === "error") {
-      setError(message || "No se pudo completar la acción.");
+      setError(message || (isEn ? "Could not complete this action." : "No se pudo completar la acción."));
     }
-  }, [searchParams]);
+  }, [searchParams, isEn]);
 
   useEffect(() => {
     let mounted = true;
@@ -95,7 +98,7 @@ export default function FacebookConexionPage() {
 
       if (userError || !user) {
         if (mounted) {
-          setError("No se pudo validar la sesión.");
+          setError(isEn ? "Could not validate session." : "No se pudo validar la sesión.");
           setLoading(false);
         }
         return;
@@ -144,7 +147,7 @@ export default function FacebookConexionPage() {
 
       if (firstError) {
         if (mounted) {
-          setError(firstError.message || "No se pudo cargar los assets.");
+          setError(firstError.message || (isEn ? "Could not load assets." : "No se pudo cargar los assets."));
           setLoading(false);
         }
         return;
@@ -166,7 +169,7 @@ export default function FacebookConexionPage() {
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [isEn]);
 
   const handleDisconnect = async () => {
     setDisconnecting(true);
@@ -180,7 +183,7 @@ export default function FacebookConexionPage() {
 
       if (!response.ok) {
         const payload = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(payload.error || "No se pudo desconectar.");
+        throw new Error(payload.error || (isEn ? "Could not disconnect." : "No se pudo desconectar."));
       }
 
       setConnection(null);
@@ -189,9 +192,13 @@ export default function FacebookConexionPage() {
       setFanPages([]);
       setInstagramAccounts([]);
       setPixels([]);
-      setNotice("Facebook desconectado. Se eliminaron los assets de tu cuenta.");
+      setNotice(
+        isEn
+          ? "Facebook disconnected. Your account assets were removed."
+          : "Facebook desconectado. Se eliminaron los assets de tu cuenta."
+      );
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "No se pudo desconectar.");
+      setError(err instanceof Error ? err.message : isEn ? "Could not disconnect." : "No se pudo desconectar.");
     } finally {
       setDisconnecting(false);
     }
@@ -201,7 +208,7 @@ export default function FacebookConexionPage() {
     () =>
       adAccounts.map((row) => ({
         id: row.account_id || row.facebook_ad_account_id,
-        name: row.name || "Sin nombre",
+        name: row.name || (isEn ? "No name" : "Sin nombre"),
         meta: row.currency ? `Moneda: ${row.currency}` : undefined,
       })),
     [adAccounts]
@@ -211,7 +218,7 @@ export default function FacebookConexionPage() {
     () =>
       businessManagers.map((row) => ({
         id: row.facebook_business_id,
-        name: row.name || "Sin nombre",
+        name: row.name || (isEn ? "No name" : "Sin nombre"),
       })),
     [businessManagers]
   );
@@ -220,7 +227,7 @@ export default function FacebookConexionPage() {
     () =>
       fanPages.map((row) => ({
         id: row.facebook_page_id,
-        name: row.name || "Sin nombre",
+        name: row.name || (isEn ? "No name" : "Sin nombre"),
         meta: row.category || undefined,
       })),
     [fanPages]
@@ -230,7 +237,7 @@ export default function FacebookConexionPage() {
     () =>
       instagramAccounts.map((row) => ({
         id: row.instagram_account_id,
-        name: row.username || row.name || "Sin nombre",
+        name: row.username || row.name || (isEn ? "No name" : "Sin nombre"),
         meta: row.name && row.username ? row.name : undefined,
       })),
     [instagramAccounts]
@@ -240,14 +247,14 @@ export default function FacebookConexionPage() {
     () =>
       pixels.map((row) => ({
         id: row.facebook_pixel_id,
-        name: row.name || "Sin nombre",
+        name: row.name || (isEn ? "No name" : "Sin nombre"),
         meta: `Origen ID: ${row.facebook_ad_account_id}`,
       })),
     [pixels]
   );
 
   const expiryText = connection?.token_expires_at
-    ? new Date(connection.token_expires_at).toLocaleDateString("es-PE")
+    ? new Date(connection.token_expires_at).toLocaleDateString(isEn ? "en-US" : "es-PE")
     : null;
 
   if (loading) {
@@ -273,9 +280,11 @@ export default function FacebookConexionPage() {
     <main className="px-4 py-8 sm:px-6 lg:px-10">
       <div className="mx-auto max-w-6xl">
         <header>
-          <h1 className="text-3xl font-bold text-[#111827] sm:text-4xl">Activos Publicitarios</h1>
+          <h1 className="text-3xl font-bold text-[#111827] sm:text-4xl">{isEn ? "Advertising Assets" : "Activos Publicitarios"}</h1>
           <p className="mt-2 text-base text-slate-600">
-            Aquí ves los activos sincronizados desde Meta y almacenados en tu base de datos.
+            {isEn
+              ? "Here you can see assets synced from Meta and stored in your database."
+              : "Aquí ves los activos sincronizados desde Meta y almacenados en tu base de datos."}
           </p>
         </header>
 
@@ -297,7 +306,7 @@ export default function FacebookConexionPage() {
               {connection?.facebook_profile_picture_url ? (
                 <img
                   src={connection.facebook_profile_picture_url}
-                  alt={connection.facebook_name || "Perfil de Facebook"}
+                  alt={connection.facebook_name || (isEn ? "Facebook profile" : "Perfil de Facebook")}
                   className="h-14 w-14 rounded-full border border-slate-200 object-cover"
                 />
               ) : (
@@ -306,14 +315,14 @@ export default function FacebookConexionPage() {
                 </div>
               )}
               <div>
-                <p className="text-sm font-semibold text-emerald-600">Conexión activa</p>
+                <p className="text-sm font-semibold text-emerald-600">{isEn ? "Active connection" : "Conexión activa"}</p>
                 <h2 className="mt-1 text-xl font-semibold text-[#111827]">
-                  {connection?.facebook_name || "Sin conexión activa"}
+                  {connection?.facebook_name || (isEn ? "No active connection" : "Sin conexión activa")}
                 </h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  ID: {connection?.facebook_user_id || "No disponible"}
+                  ID: {connection?.facebook_user_id || (isEn ? "Unavailable" : "No disponible")}
                   {connection?.facebook_email ? ` | ${connection.facebook_email}` : ""}
-                  {expiryText ? ` | Expira: ${expiryText}` : ""}
+                  {expiryText ? ` | ${isEn ? "Expires" : "Expira"}: ${expiryText}` : ""}
                 </p>
               </div>
             </div>
@@ -324,7 +333,7 @@ export default function FacebookConexionPage() {
                 className="inline-flex items-center gap-2 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50"
               >
                 <RefreshIcon />
-                Refrescar
+                {isEn ? "Refresh" : "Refrescar"}
               </a>
               <button
                 type="button"
@@ -333,7 +342,7 @@ export default function FacebookConexionPage() {
                 className="inline-flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 <TrashIcon />
-                {disconnecting ? "Desconectando..." : "Desconectar"}
+                {disconnecting ? (isEn ? "Disconnecting..." : "Desconectando...") : isEn ? "Disconnect" : "Desconectar"}
               </button>
             </div>
           </div>
@@ -354,30 +363,32 @@ export default function FacebookConexionPage() {
         <section className="mt-6 space-y-4">
           <AssetAccordion
             id="ad_accounts"
-            title={`Cuentas Publicitarias (${adAccountItems.length})`}
-            description="Publicar campañas y revisar reportes."
+            title={`${isEn ? "Ad Accounts" : "Cuentas Publicitarias"} (${adAccountItems.length})`}
+            description={isEn ? "Launch campaigns and review reports." : "Publicar campañas y revisar reportes."}
             items={adAccountItems}
             openSection={openSection}
             setOpenSection={setOpenSection}
             query={queries.ad_accounts}
             onQueryChange={(value) => setQueries((prev) => ({ ...prev, ad_accounts: value }))}
+            isEn={isEn}
           />
 
           <AssetAccordion
             id="fan_pages"
             title={`Fan Pages (${fanPageItems.length})`}
-            description="Páginas disponibles para publicaciones y anuncios."
+            description={isEn ? "Pages available for posts and ads." : "Páginas disponibles para publicaciones y anuncios."}
             items={fanPageItems}
             openSection={openSection}
             setOpenSection={setOpenSection}
             query={queries.fan_pages}
             onQueryChange={(value) => setQueries((prev) => ({ ...prev, fan_pages: value }))}
+            isEn={isEn}
           />
 
           <AssetAccordion
             id="business_managers"
             title={`Business Managers (${businessManagerItems.length})`}
-            description="Estructuras empresariales conectadas."
+            description={isEn ? "Connected business structures." : "Estructuras empresariales conectadas."}
             items={businessManagerItems}
             openSection={openSection}
             setOpenSection={setOpenSection}
@@ -385,28 +396,31 @@ export default function FacebookConexionPage() {
             onQueryChange={(value) =>
               setQueries((prev) => ({ ...prev, business_managers: value }))
             }
+            isEn={isEn}
           />
 
           <AssetAccordion
             id="instagram"
-            title={`Cuentas de Instagram (${instagramItems.length})`}
-            description="Perfiles de Instagram vinculados vía páginas."
+            title={`${isEn ? "Instagram Accounts" : "Cuentas de Instagram"} (${instagramItems.length})`}
+            description={isEn ? "Instagram profiles connected through pages." : "Perfiles de Instagram vinculados vía páginas."}
             items={instagramItems}
             openSection={openSection}
             setOpenSection={setOpenSection}
             query={queries.instagram}
             onQueryChange={(value) => setQueries((prev) => ({ ...prev, instagram: value }))}
+            isEn={isEn}
           />
 
           <AssetAccordion
             id="pixels"
             title={`Pixels / Datasets (${pixelItems.length})`}
-            description="Activos de medición y conversiones disponibles."
+            description={isEn ? "Available measurement and conversion assets." : "Activos de medición y conversiones disponibles."}
             items={pixelItems}
             openSection={openSection}
             setOpenSection={setOpenSection}
             query={queries.pixels}
             onQueryChange={(value) => setQueries((prev) => ({ ...prev, pixels: value }))}
+            isEn={isEn}
           />
         </section>
       </div>
@@ -443,6 +457,7 @@ function AssetAccordion({
   setOpenSection,
   query,
   onQueryChange,
+  isEn,
 }: {
   id: string;
   title: string;
@@ -452,6 +467,7 @@ function AssetAccordion({
   setOpenSection: (value: string | null) => void;
   query: string;
   onQueryChange: (value: string) => void;
+  isEn: boolean;
 }) {
   const isOpen = openSection === id;
 
@@ -500,13 +516,13 @@ function AssetAccordion({
               type="text"
               value={query}
               onChange={(event) => onQueryChange(event.target.value)}
-              placeholder="Buscar por nombre o ID"
+              placeholder={isEn ? "Search by name or ID" : "Buscar por nombre o ID"}
               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-[#1D293D] outline-none ring-0 transition focus:border-[#1D293D]"
             />
 
             <div className="mt-4 max-h-[360px] overflow-auto rounded-xl border border-slate-100">
               {filteredItems.length === 0 ? (
-                <div className="px-4 py-6 text-sm text-slate-500">No hay resultados para tu búsqueda.</div>
+                <div className="px-4 py-6 text-sm text-slate-500">{isEn ? "No results for your search." : "No hay resultados para tu búsqueda."}</div>
               ) : (
                 filteredItems.map((item) => (
                   <div

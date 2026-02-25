@@ -1,7 +1,15 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
-import { AppLocale, inferLocaleFromBrowser, LOCALE_COOKIE, normalizeLocale } from "../lib/locale";
+import {
+  AppLocale,
+  inferLocaleFromBrowser,
+  LOCALE_COOKIE,
+  TIMEZONE_COOKIE,
+  normalizeLocale,
+  readCookie,
+  writeCookie,
+} from "../lib/locale";
 
 type LocaleContextValue = {
   locale: AppLocale;
@@ -13,49 +21,25 @@ const LocaleContext = createContext<LocaleContextValue>({
   setLocale: () => undefined,
 });
 
-function readCookieLocale() {
-  if (typeof document === "undefined") return null;
-  const match = document.cookie
-    .split("; ")
-    .find((entry) => entry.startsWith(`${LOCALE_COOKIE}=`))
-    ?.split("=")[1];
-  return normalizeLocale(match);
-}
-
-function persistLocale(locale: AppLocale) {
-  if (typeof document === "undefined") return;
-  document.cookie = `${LOCALE_COOKIE}=${locale}; path=/; max-age=31536000; SameSite=Lax`;
-  try {
-    localStorage.setItem(LOCALE_COOKIE, locale);
-  } catch {
-    // Ignore localStorage errors (private mode, etc.)
-  }
-}
-
 export function LocaleProvider({ children }: { children: React.ReactNode }) {
   const [locale, setLocaleState] = useState<AppLocale>("en");
 
   useEffect(() => {
-    let resolved = readCookieLocale();
-
-    if (!resolved && typeof window !== "undefined") {
-      try {
-        resolved = normalizeLocale(localStorage.getItem(LOCALE_COOKIE));
-      } catch {
-        resolved = null;
+    let resolved = normalizeLocale(readCookie(LOCALE_COOKIE));
+    if (typeof navigator !== "undefined") {
+      if (!resolved) {
+        resolved = inferLocaleFromBrowser(
+          navigator.language,
+          Intl.DateTimeFormat().resolvedOptions().timeZone
+        );
       }
-    }
-
-    if (!resolved && typeof navigator !== "undefined") {
-      resolved = inferLocaleFromBrowser(
-        navigator.language,
-        Intl.DateTimeFormat().resolvedOptions().timeZone
-      );
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      writeCookie(TIMEZONE_COOKIE, timezone);
     }
 
     const nextLocale = resolved || "en";
     setLocaleState(nextLocale);
-    persistLocale(nextLocale);
+    writeCookie(LOCALE_COOKIE, nextLocale);
   }, []);
 
   useEffect(() => {
@@ -68,7 +52,11 @@ export function LocaleProvider({ children }: { children: React.ReactNode }) {
       locale,
       setLocale: (nextLocale) => {
         setLocaleState(nextLocale);
-        persistLocale(nextLocale);
+        writeCookie(LOCALE_COOKIE, nextLocale);
+        if (typeof navigator !== "undefined") {
+          const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+          writeCookie(TIMEZONE_COOKIE, timezone);
+        }
       },
     }),
     [locale]

@@ -5,12 +5,15 @@ import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 import { localizePublicPath } from "../../lib/locale";
 import { useLocale } from "../../providers/LocaleProvider";
+import { useTheme } from "../../providers/ThemeProvider";
 import LocaleToggle from "../../components/locale-toggle";
 
 export default function SignIn() {
   const router = useRouter();
   const { locale } = useLocale();
+  const { theme } = useTheme();
   const isEn = locale === "en";
+  const isDark = theme === "dark";
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -80,23 +83,37 @@ export default function SignIn() {
         </div>
       </div>
 
-      <div className="w-full lg:w-1/2 flex items-center justify-center p-8 bg-[#F5F5F5]">
-        <div className="max-w-md w-full space-y-6 bg-white rounded-xl shadow-sm border border-slate-200 p-10">
+      <div
+        className={`w-full lg:w-1/2 flex items-center justify-center p-8 ${
+          isDark ? "bg-[#0a1322]" : "bg-[#F5F5F5]"
+        }`}
+      >
+        <div
+          className={`max-w-md w-full space-y-6 rounded-xl border p-10 ${
+            isDark
+              ? "border-slate-700/80 bg-[linear-gradient(165deg,#0f1b33_0%,#121a2a_45%,#0f172a_100%)] shadow-[0_28px_70px_rgba(2,6,23,0.55)]"
+              : "bg-white border-slate-200 shadow-sm"
+          }`}
+        >
           <div className="flex justify-end">
             <LocaleToggle />
           </div>
           <div className="text-center mb-6">
-            <h2 className="text-3xl font-semibold text-[#26251E] mb-2">
+            <h2 className={`text-3xl font-semibold mb-2 ${isDark ? "text-slate-100" : "text-[#26251E]"}`}>
               {isEn ? "Welcome back" : "Hola de nuevo"}
             </h2>
-            <p className="text-slate-600 text-sm">
+            <p className={`text-sm ${isDark ? "text-slate-300" : "text-slate-600"}`}>
               {isEn ? "Sign in to your OMNI Scale account" : "Ingresa a tu cuenta OMNI Scale"}
             </p>
           </div>
 
           <button
             type="button"
-            className="w-full flex items-center justify-center gap-3 border border-slate-300 rounded-lg py-2.5 text-sm font-medium hover:bg-slate-50 transition"
+            className={`w-full flex items-center justify-center gap-3 border rounded-lg py-2.5 text-sm font-medium transition ${
+              isDark
+                ? "border-slate-600 text-slate-100 hover:bg-slate-800/70"
+                : "border-slate-300 hover:bg-slate-50"
+            }`}
           >
             <img
               src="https://www.svgrepo.com/show/475656/google-color.svg"
@@ -107,16 +124,16 @@ export default function SignIn() {
           </button>
 
           <div className="flex items-center gap-4">
-            <div className="flex-1 h-px bg-slate-200" />
-            <span className="text-xs text-slate-400">
+            <div className={`flex-1 h-px ${isDark ? "bg-slate-600" : "bg-slate-200"}`} />
+            <span className={`text-xs ${isDark ? "text-slate-400" : "text-slate-400"}`}>
               {isEn ? "Or continue with email" : "O continuar con correo"}
             </span>
-            <div className="flex-1 h-px bg-slate-200" />
+            <div className={`flex-1 h-px ${isDark ? "bg-slate-600" : "bg-slate-200"}`} />
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <label className="text-sm font-medium text-slate-700">
+              <label className={`text-sm font-medium ${isDark ? "text-slate-200" : "text-slate-700"}`}>
                 {isEn ? "Email" : "Correo electronico"}
               </label>
               <input
@@ -125,16 +142,20 @@ export default function SignIn() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
-                className="mt-1 w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                className={`mt-1 w-full border rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 ${
+                  isDark
+                    ? "border-slate-600 text-slate-100 placeholder:text-slate-400 focus:ring-slate-400"
+                    : "border-slate-300 focus:ring-black"
+                }`}
               />
             </div>
 
             <div>
               <div className="flex justify-between items-center">
-                <label className="text-sm font-medium text-slate-700">
+                <label className={`text-sm font-medium ${isDark ? "text-slate-200" : "text-slate-700"}`}>
                   {isEn ? "Password" : "Contrasena"}
                 </label>
-                <a href="#" className="text-xs text-slate-500 hover:text-black">
+                <a href="#" className={`text-xs ${isDark ? "text-slate-400 hover:text-white" : "text-slate-500 hover:text-black"}`}>
                   {isEn ? "Forgot your password?" : "Olvidaste tu contrasena?"}
                 </a>
               </div>
@@ -144,7 +165,11 @@ export default function SignIn() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                className="mt-1 w-full border border-slate-300 rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                className={`mt-1 w-full border rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 ${
+                  isDark
+                    ? "border-slate-600 text-slate-100 placeholder:text-slate-400 focus:ring-slate-400"
+                    : "border-slate-300 focus:ring-black"
+                }`}
               />
             </div>
 
@@ -161,27 +186,36 @@ export default function SignIn() {
             </button>
           </form>
 
-          <div className="text-center text-sm text-slate-600">
+          <div className={`text-center text-sm ${isDark ? "text-slate-300" : "text-slate-600"}`}>
             {isEn ? "Don't have an account?" : "No tienes una cuenta?"}{" "}
             <a
               href={localizePublicPath(locale, "/signup")}
-              className="font-medium text-black hover:underline"
+              className={`font-medium hover:underline ${isDark ? "text-slate-100" : "text-black"}`}
             >
               {isEn ? "Create account" : "Registrate"}
             </a>
           </div>
 
-          <p className="text-xs text-center text-slate-400 leading-relaxed">
+          <p className={`text-xs text-center leading-relaxed ${isDark ? "text-slate-400" : "text-slate-400"}`}>
             {isEn ? "By signing in, you accept our" : "Al iniciar sesion, aceptas nuestros"}{" "}
-            <a href={localizePublicPath(locale, "/terms-and-conditions")} className="underline hover:text-black">
+            <a
+              href={localizePublicPath(locale, "/terms-and-conditions")}
+              className={`underline ${isDark ? "hover:text-white" : "hover:text-black"}`}
+            >
               {isEn ? "Terms and Conditions" : "Terminos y Condiciones"}
             </a>{" "}
             {isEn ? "and" : "y"}{" "}
-            <a href={localizePublicPath(locale, "/privacy-policy")} className="underline hover:text-black">
+            <a
+              href={localizePublicPath(locale, "/privacy-policy")}
+              className={`underline ${isDark ? "hover:text-white" : "hover:text-black"}`}
+            >
               {isEn ? "Privacy Policy" : "Politica de Privacidad"}
             </a>{" "}
             {isEn ? "and" : "y"}{" "}
-            <a href={localizePublicPath(locale, "/data-deletion-policy")} className="underline hover:text-black">
+            <a
+              href={localizePublicPath(locale, "/data-deletion-policy")}
+              className={`underline ${isDark ? "hover:text-white" : "hover:text-black"}`}
+            >
               {isEn ? "Data Deletion Policy" : "Politica de Eliminacion de Datos"}
             </a>
             .

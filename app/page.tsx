@@ -80,13 +80,13 @@ export default function Home() {
               >
                 {isEn ? "Sign in" : "Iniciar sesion"}
               </a>
-              <LocaleToggle />
               <a
                 href={localizePublicPath(locale, "/signup")}
                 className="rounded-xl bg-[#0f1d36] px-5 py-2 text-sm font-semibold text-white transition hover:opacity-90"
               >
                 {isEn ? "Start free trial" : "Probar gratis"}
               </a>
+              <LocaleToggle />
             </div>
           </div>
         </div>
@@ -100,7 +100,6 @@ export default function Home() {
               <a href="#precios">{isEn ? "Pricing" : "Precios"}</a>
             </nav>
             <div className="mt-4 flex gap-3">
-              <LocaleToggle />
               <a
                 href={localizePublicPath(locale, "/signin")}
                 className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium"
@@ -113,6 +112,7 @@ export default function Home() {
               >
                 {isEn ? "Start free trial" : "Probar gratis"}
               </a>
+              <LocaleToggle />
             </div>
           </div>
         )}
