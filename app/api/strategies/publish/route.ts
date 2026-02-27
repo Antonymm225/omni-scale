@@ -193,18 +193,19 @@ function sanitizeAdSetCreatePayload(
   if (!Number.isFinite(lifetime) || lifetime <= 0) delete payload.lifetime_budget;
   if (payload.daily_budget && payload.lifetime_budget) delete payload.lifetime_budget;
 
-  // Meta requires this flag explicitly for ABO (no campaign budget optimization).
-  if (!campaignUsesBudgetOptimization) {
-    const explicit = adSet.is_adset_budget_sharing_enabled;
-    if (typeof explicit === "boolean") {
-      payload.is_adset_budget_sharing_enabled = explicit;
-    } else if (typeof explicit === "string") {
-      const lowered = explicit.trim().toLowerCase();
-      payload.is_adset_budget_sharing_enabled = lowered === "true";
-    } else {
-      payload.is_adset_budget_sharing_enabled = false;
-    }
+  // Meta requires this field explicitly in some ABO scenarios.
+  // Send it always as "true"/"false" string for compatibility.
+  const explicit = adSet.is_adset_budget_sharing_enabled;
+  let sharingEnabled = false;
+  if (typeof explicit === "boolean") {
+    sharingEnabled = explicit;
+  } else if (typeof explicit === "string") {
+    sharingEnabled = explicit.trim().toLowerCase() === "true";
+  } else if (campaignUsesBudgetOptimization) {
+    // For CBO this value is ignored by Meta, but still accepted.
+    sharingEnabled = false;
   }
+  payload.is_adset_budget_sharing_enabled = sharingEnabled ? "true" : "false";
 
   return payload;
 }
