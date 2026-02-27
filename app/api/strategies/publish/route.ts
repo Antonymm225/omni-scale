@@ -157,7 +157,11 @@ function sanitizeCampaignCreatePayload(campaign: Record<string, unknown>): Recor
   return payload;
 }
 
-function sanitizeAdSetCreatePayload(adSet: Record<string, unknown>, campaignId: string): Record<string, unknown> {
+function sanitizeAdSetCreatePayload(
+  adSet: Record<string, unknown>,
+  campaignId: string,
+  campaignUsesBudgetOptimization: boolean
+): Record<string, unknown> {
   const payload: Record<string, unknown> = {
     campaign_id: campaignId,
     name: adSet.name,
@@ -188,6 +192,19 @@ function sanitizeAdSetCreatePayload(adSet: Record<string, unknown>, campaignId: 
   if (!Number.isFinite(daily) || daily <= 0) delete payload.daily_budget;
   if (!Number.isFinite(lifetime) || lifetime <= 0) delete payload.lifetime_budget;
   if (payload.daily_budget && payload.lifetime_budget) delete payload.lifetime_budget;
+
+  // Meta requires this flag explicitly for ABO (no campaign budget optimization).
+  if (!campaignUsesBudgetOptimization) {
+    const explicit = adSet.is_adset_budget_sharing_enabled;
+    if (typeof explicit === "boolean") {
+      payload.is_adset_budget_sharing_enabled = explicit;
+    } else if (typeof explicit === "string") {
+      const lowered = explicit.trim().toLowerCase();
+      payload.is_adset_budget_sharing_enabled = lowered === "true";
+    } else {
+      payload.is_adset_budget_sharing_enabled = false;
+    }
+  }
 
   return payload;
 }
@@ -311,6 +328,9 @@ export async function POST(request: NextRequest) {
 
     const campaignInput = asRecord(finalPayload.campaign);
     const adSetsInput = Array.isArray(finalPayload.adSets) ? (finalPayload.adSets as Array<Record<string, unknown>>) : [];
+    const campaignUsesBudgetOptimization = Boolean(
+      Number(campaignInput.daily_budget ?? 0) > 0 || Number(campaignInput.lifetime_budget ?? 0) > 0
+    );
 
     const createdEntityMap: Array<{
       launch_id: string;
@@ -340,7 +360,7 @@ export async function POST(request: NextRequest) {
       const createdAdSet = await graphPost(
         `${accountEdgeId}/adsets`,
         facebookToken,
-        sanitizeAdSetCreatePayload(adSet, createdCampaignId)
+        sanitizeAdSetCreatePayload(adSet, createdCampaignId, campaignUsesBudgetOptimization)
       );
       const createdAdSetId = String(createdAdSet.id || "");
       if (!createdAdSetId) throw new Error("Facebook no devolvio ad set id");
