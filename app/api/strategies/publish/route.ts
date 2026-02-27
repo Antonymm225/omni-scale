@@ -146,6 +146,14 @@ function sanitizeCampaignCreatePayload(campaign: Record<string, unknown>): Recor
       payload[key] = key.includes("time") ? normalizeFacebookDate(campaign[key]) : campaign[key];
     }
   });
+
+  // Budget guardrails: Facebook rejects 0 values and daily+lifetime together.
+  const daily = Number(campaign.daily_budget ?? 0);
+  const lifetime = Number(campaign.lifetime_budget ?? 0);
+  if (!Number.isFinite(daily) || daily <= 0) delete payload.daily_budget;
+  if (!Number.isFinite(lifetime) || lifetime <= 0) delete payload.lifetime_budget;
+  if (payload.daily_budget && payload.lifetime_budget) delete payload.lifetime_budget;
+
   return payload;
 }
 
@@ -174,6 +182,13 @@ function sanitizeAdSetCreatePayload(adSet: Record<string, unknown>, campaignId: 
       payload[key] = key.includes("time") ? normalizeFacebookDate(adSet[key]) : adSet[key];
     }
   });
+
+  const daily = Number(adSet.daily_budget ?? 0);
+  const lifetime = Number(adSet.lifetime_budget ?? 0);
+  if (!Number.isFinite(daily) || daily <= 0) delete payload.daily_budget;
+  if (!Number.isFinite(lifetime) || lifetime <= 0) delete payload.lifetime_budget;
+  if (payload.daily_budget && payload.lifetime_budget) delete payload.lifetime_budget;
+
   return payload;
 }
 
