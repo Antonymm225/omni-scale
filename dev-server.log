@@ -1,0 +1,12 @@
+
+> omni-scale@0.1.0 dev
+> next dev --webpack -p 3002
+
+▲ Next.js 16.1.6 (webpack)
+- Local:         http://localhost:3002
+- Network:       http://172.30.208.1:3002
+- Environments: .env.local
+
+✓ Starting...
+✓ Ready in 1490ms
+^C^C�Desea terminar el trabajo por lotes (S/N)? 
