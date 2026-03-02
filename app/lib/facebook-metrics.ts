@@ -7,10 +7,11 @@ import {
 } from "./adset-classification";
 import { createOpenAiClient, extractJsonObject } from "./openai-client";
 import { sendWhatsappText } from "./whatsapp";
+import { initFacebookApi, readFacebookError } from "./facebook-sdk";
 
 type GraphPagingResponse<T> = {
   data?: T[];
-  paging?: { next?: string };
+  paging?: { next?: string; cursors?: { after?: string } };
   error?: { message?: string };
 };
 
@@ -213,10 +214,48 @@ export type UserSyncSummary = {
 
 const GRAPH_BASE_URL = "https://graph.facebook.com/v23.0";
 
+function isGraphRequestUrl(url: string) {
+  return url.startsWith(`${GRAPH_BASE_URL}/`);
+}
+
+function parseGraphUrl(url: string) {
+  const parsed = new URL(url);
+  const versionPrefix = /^\/v\d+\.\d+\/?/;
+  const pathWithoutVersion = parsed.pathname
+    .replace(versionPrefix, "")
+    .replace(/^\/+|\/+$/g, "");
+  const path = pathWithoutVersion.split("/").filter(Boolean);
+
+  const params: Record<string, string> = {};
+  let token = "";
+  parsed.searchParams.forEach((value, key) => {
+    if (key === "access_token") {
+      token = value;
+      return;
+    }
+    params[key] = value;
+  });
+
+  if (!token) throw new Error("Meta access token missing in graph url");
+  if (path.length === 0) throw new Error("Invalid graph path");
+
+  return { token, path, params };
+}
+
 async function fetchJson<T>(url: string): Promise<T> {
+  if (isGraphRequestUrl(url)) {
+    try {
+      const { token, path, params } = parseGraphUrl(url);
+      const api = initFacebookApi(token);
+      const payload = await api.call("GET", path, params);
+      return payload as T;
+    } catch (error) {
+      throw new Error(readFacebookError(error, "Meta request failed"));
+    }
+  }
+
   const response = await fetch(url, { method: "GET", cache: "no-store" });
   const payload: unknown = await response.json();
-
   if (!response.ok) {
     const message =
       typeof payload === "object" &&
@@ -224,24 +263,61 @@ async function fetchJson<T>(url: string): Promise<T> {
       "error" in payload &&
       typeof (payload as { error?: { message?: string } }).error?.message === "string"
         ? (payload as { error?: { message?: string } }).error!.message!
-        : "Meta request failed";
+        : "Request failed";
     throw new Error(message);
   }
-
   return payload as T;
 }
 
 async function graphFetchPaginated<T>(url: string, maxPages = 10): Promise<T[]> {
-  const rows: T[] = [];
-  let nextUrl: string | undefined = url;
-  let pages = 0;
+  if (!isGraphRequestUrl(url)) {
+    const rows: T[] = [];
+    let nextUrl: string | undefined = url;
+    let pages = 0;
 
-  while (nextUrl && pages < maxPages) {
-    const page: GraphPagingResponse<T> = await fetchJson<GraphPagingResponse<T>>(nextUrl);
+    while (nextUrl && pages < maxPages) {
+      const page: GraphPagingResponse<T> = await fetchJson<GraphPagingResponse<T>>(nextUrl);
+      if (page.error?.message) throw new Error(page.error.message);
+      if (page.data?.length) rows.push(...page.data);
+      nextUrl = page.paging?.next;
+      pages += 1;
+    }
+
+    return rows;
+  }
+
+  const parsed = parseGraphUrl(url);
+  const api = initFacebookApi(parsed.token);
+  const path = parsed.path;
+  let params = parsed.params;
+  const rows: T[] = [];
+
+  for (let pages = 0; pages < maxPages; pages += 1) {
+    let page: GraphPagingResponse<T>;
+    try {
+      page = (await api.call("GET", path, params)) as GraphPagingResponse<T>;
+    } catch (error) {
+      throw new Error(readFacebookError(error, "Meta request failed"));
+    }
+
     if (page.error?.message) throw new Error(page.error.message);
     if (page.data?.length) rows.push(...page.data);
-    nextUrl = page.paging?.next;
-    pages += 1;
+
+    if (!page.paging?.next) break;
+
+    const cursorAfter = page.paging?.cursors?.after;
+    if (cursorAfter) {
+      params = { ...params, after: cursorAfter };
+      continue;
+    }
+
+    const nextParsed = new URL(page.paging.next);
+    const nextParams: Record<string, string> = {};
+    nextParsed.searchParams.forEach((value, key) => {
+      if (key === "access_token") return;
+      nextParams[key] = value;
+    });
+    params = nextParams;
   }
 
   return rows;
