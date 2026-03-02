@@ -73,6 +73,12 @@ function asRecord(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
 }
 
+function isLeadsObjective(value: string) {
+  if (!value) return false;
+  const upper = value.toUpperCase();
+  return upper === "OUTCOME_LEADS" || upper === "LEADS" || upper.includes("LEAD");
+}
+
 function readPromotedObjectLeadSignal(promotedObject: Record<string, unknown> | null | undefined) {
   if (!promotedObject) return false;
   const promoted = asRecord(promotedObject);
@@ -113,7 +119,7 @@ export function classifyAdset(
   }
 
   // 2) LEADS by objective (OUTCOME_LEADS) with high priority
-  if (campaignObjective === "OUTCOME_LEADS") {
+  if (isLeadsObjective(campaignObjective)) {
     return {
       performanceType: "LEADS",
       classificationSource: "auto",
