@@ -69,12 +69,35 @@ function includesAny(value: string | undefined, keywords: string[]) {
   return keywords.some((keyword) => upper.includes(keyword));
 }
 
+function asRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null ? (value as Record<string, unknown>) : {};
+}
+
+function readPromotedObjectLeadSignal(promotedObject: Record<string, unknown> | null | undefined) {
+  if (!promotedObject) return false;
+  const promoted = asRecord(promotedObject);
+
+  // Lead Ads form
+  if (promoted.lead_ads_customization_id || promoted.lead_gen_form_id) return true;
+
+  // Website leads (OUTCOME_LEADS -> website) commonly set custom event as LEAD
+  const customEventType = String(promoted.custom_event_type || "").toUpperCase();
+  if (customEventType.includes("LEAD") || customEventType === "COMPLETE_REGISTRATION") return true;
+
+  // Some accounts include conversion event under custom_conversion / pixel config
+  const pixelRule = String(promoted.pixel_rule || "").toUpperCase();
+  if (pixelRule.includes("LEAD")) return true;
+
+  return false;
+}
+
 export function classifyAdset(
   adsetData: AdsetClassificationInput,
   _insightsData?: { actions?: Action[] }
 ): ClassificationResult {
   const optimizationGoal = (adsetData.optimization_goal || "").toUpperCase();
   const destinationType = adsetData.destination_type || "";
+  const isLeadPromotedObject = readPromotedObjectLeadSignal(adsetData.promoted_object);
 
   // Classification uses real optimization outcome only.
   // campaign_objective is intentionally not used to determine category.
@@ -91,7 +114,16 @@ export function classifyAdset(
     };
   }
 
-  // 2) VENTAS
+  // 2) LEADS override from promoted object (lead forms or website LEAD conversion)
+  if (isLeadPromotedObject) {
+    return {
+      performanceType: "LEADS",
+      classificationSource: "auto",
+      confidenceScore: 95,
+    };
+  }
+
+  // 3) VENTAS
   if (SALES_OPTIMIZATION.has(optimizationGoal)) {
     return {
       performanceType: "SALES",
@@ -100,7 +132,7 @@ export function classifyAdset(
     };
   }
 
-  // 3) LEADS
+  // 4) LEADS
   if (LEADS_OPTIMIZATION.has(optimizationGoal)) {
     return {
       performanceType: "LEADS",
@@ -109,7 +141,7 @@ export function classifyAdset(
     };
   }
 
-  // 4) BRANDING fallback (stored as AWARENESS)
+  // 5) BRANDING fallback (stored as AWARENESS)
   return {
     performanceType: "AWARENESS",
     classificationSource: "auto",
