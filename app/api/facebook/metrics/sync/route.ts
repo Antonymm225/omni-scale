@@ -2,9 +2,7 @@ import { NextRequest } from "next/server";
 import { createClient as createServerSupabaseClient } from "../../../../lib/supabase-server";
 import { supabaseAdmin } from "../../../../lib/supabase-admin";
 import {
-  syncUserAllMetrics,
-  syncUserLeadsMetrics,
-  syncUserPerformanceMonitoring,
+  runUserMetricsSyncWithRuntime,
 } from "../../../../lib/facebook-metrics";
 import { jsonUtf8 } from "../../../../lib/api-utf8";
 
@@ -36,17 +34,33 @@ export async function POST(request: NextRequest) {
 
     const scope = request.nextUrl.searchParams.get("scope");
     if (scope === "leads") {
-      const leadsSummary = await syncUserLeadsMetrics(user.id, connection.access_token);
-      const monitoringSummary = await syncUserPerformanceMonitoring(user.id, connection.access_token);
+      const run = await runUserMetricsSyncWithRuntime({
+        userId: user.id,
+        token: connection.access_token,
+        triggerSource: "manual",
+        scope: "leads",
+      });
+      if (run.status === "locked") {
+        return jsonUtf8({ ok: false, locked: true, error: "Sincronizacion en curso. Intenta en unos minutos." }, { status: 409 });
+      }
       return jsonUtf8({
         ok: true,
         scope: "leads",
-        summary: { leads: leadsSummary, monitoring: monitoringSummary },
+        summary: run.summary,
+        run_id: run.runId,
       });
     }
 
-    const summary = await syncUserAllMetrics(user.id, connection.access_token);
-    return jsonUtf8({ ok: true, scope: "all", summary });
+    const run = await runUserMetricsSyncWithRuntime({
+      userId: user.id,
+      token: connection.access_token,
+      triggerSource: "manual",
+      scope: "all",
+    });
+    if (run.status === "locked") {
+      return jsonUtf8({ ok: false, locked: true, error: "Sincronizacion en curso. Intenta en unos minutos." }, { status: 409 });
+    }
+    return jsonUtf8({ ok: true, scope: "all", summary: run.summary, run_id: run.runId });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "No se pudo sincronizar";
     return jsonUtf8({ error: message }, { status: 500 });

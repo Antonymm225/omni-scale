@@ -96,11 +96,9 @@ export function classifyAdset(
   _insightsData?: { actions?: Action[] }
 ): ClassificationResult {
   const optimizationGoal = (adsetData.optimization_goal || "").toUpperCase();
+  const campaignObjective = (adsetData.campaign_objective || "").toUpperCase();
   const destinationType = adsetData.destination_type || "";
   const isLeadPromotedObject = readPromotedObjectLeadSignal(adsetData.promoted_object);
-
-  // Classification uses real optimization outcome only.
-  // campaign_objective is intentionally not used to determine category.
 
   // 1) MENSAJES (highest priority)
   if (
@@ -114,7 +112,16 @@ export function classifyAdset(
     };
   }
 
-  // 2) LEADS override from promoted object (lead forms or website LEAD conversion)
+  // 2) LEADS by objective (OUTCOME_LEADS) with high priority
+  if (campaignObjective === "OUTCOME_LEADS") {
+    return {
+      performanceType: "LEADS",
+      classificationSource: "auto",
+      confidenceScore: 98,
+    };
+  }
+
+  // 3) LEADS override from promoted object (lead forms or website LEAD conversion)
   if (isLeadPromotedObject) {
     return {
       performanceType: "LEADS",
@@ -123,7 +130,7 @@ export function classifyAdset(
     };
   }
 
-  // 3) VENTAS
+  // 4) VENTAS
   if (SALES_OPTIMIZATION.has(optimizationGoal)) {
     return {
       performanceType: "SALES",
@@ -132,7 +139,7 @@ export function classifyAdset(
     };
   }
 
-  // 4) LEADS
+  // 5) LEADS
   if (LEADS_OPTIMIZATION.has(optimizationGoal)) {
     return {
       performanceType: "LEADS",
@@ -141,7 +148,7 @@ export function classifyAdset(
     };
   }
 
-  // 5) BRANDING fallback (stored as AWARENESS)
+  // 6) BRANDING fallback (stored as AWARENESS)
   return {
     performanceType: "AWARENESS",
     classificationSource: "auto",

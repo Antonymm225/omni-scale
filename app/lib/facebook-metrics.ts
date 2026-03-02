@@ -212,6 +212,9 @@ export type UserSyncSummary = {
   monitoring: { userId: string; entitiesTracked: number };
 };
 
+type SyncTriggerSource = "cron" | "manual";
+type SyncScope = "all" | "leads";
+
 const GRAPH_BASE_URL = "https://graph.facebook.com/v23.0";
 
 function isGraphRequestUrl(url: string) {
@@ -2833,6 +2836,153 @@ export async function syncUserAllMetrics(
   return { dashboard, messaging, leads, branding, sales, monitoring };
 }
 
+async function createSyncRun(userId: string, triggerSource: SyncTriggerSource, scope: SyncScope) {
+  const nowIso = new Date().toISOString();
+  const { data, error } = await supabaseAdmin
+    .from("facebook_sync_runs")
+    .insert({
+      user_id: userId,
+      trigger_source: triggerSource,
+      scope,
+      status: "running",
+      started_at: nowIso,
+      created_at: nowIso,
+      updated_at: nowIso,
+    })
+    .select("id,started_at")
+    .single();
+
+  if (error) throw new Error(error.message);
+  return {
+    id: String((data as { id?: string })?.id || ""),
+    startedAt: String((data as { started_at?: string })?.started_at || nowIso),
+  };
+}
+
+async function finalizeSyncRun(
+  runId: string,
+  status: "completed" | "error" | "locked",
+  payload: {
+    startedAt: string;
+    processedAccounts?: number;
+    failedAccounts?: number;
+    errorMessage?: string | null;
+    summary?: unknown;
+  }
+) {
+  const finishedAt = new Date().toISOString();
+  const durationMs = Math.max(0, Date.parse(finishedAt) - Date.parse(payload.startedAt));
+  const { error } = await supabaseAdmin
+    .from("facebook_sync_runs")
+    .update({
+      status,
+      finished_at: finishedAt,
+      duration_ms: durationMs,
+      processed_accounts: payload.processedAccounts ?? 0,
+      failed_accounts: payload.failedAccounts ?? 0,
+      error_message: payload.errorMessage ?? null,
+      summary: payload.summary ?? null,
+      updated_at: finishedAt,
+    })
+    .eq("id", runId);
+  if (error) throw new Error(error.message);
+}
+
+async function acquireSyncLock(userId: string, runId: string, scope: SyncScope, ttlSeconds = 900) {
+  const { data, error } = await supabaseAdmin.rpc("acquire_facebook_sync_lock", {
+    p_user_id: userId,
+    p_scope: scope,
+    p_ttl_seconds: ttlSeconds,
+    p_run_id: runId,
+  });
+  if (error) throw new Error(error.message);
+  return Boolean(data);
+}
+
+async function releaseSyncLock(userId: string, runId: string) {
+  const { error } = await supabaseAdmin.rpc("release_facebook_sync_lock", {
+    p_user_id: userId,
+    p_run_id: runId,
+  });
+  if (error) {
+    console.error("[facebook-metrics] release lock failed", { userId, runId, message: error.message });
+  }
+}
+
+async function getUserAccountCount(userId: string) {
+  const { count, error } = await supabaseAdmin
+    .from("facebook_ad_accounts")
+    .select("facebook_ad_account_id", { count: "exact", head: true })
+    .eq("user_id", userId);
+  if (error) throw new Error(error.message);
+  return count || 0;
+}
+
+export async function runUserMetricsSyncWithRuntime(options: {
+  userId: string;
+  token: string;
+  triggerSource: SyncTriggerSource;
+  scope: SyncScope;
+}) {
+  const run = await createSyncRun(options.userId, options.triggerSource, options.scope);
+  const lockTtl = Number(process.env.FACEBOOK_SYNC_LOCK_TTL_SECONDS || 900);
+  let lockAcquired = false;
+
+  try {
+    lockAcquired = await acquireSyncLock(options.userId, run.id, options.scope, lockTtl);
+    if (!lockAcquired) {
+      await finalizeSyncRun(run.id, "locked", {
+        startedAt: run.startedAt,
+        processedAccounts: 0,
+        failedAccounts: 0,
+        errorMessage: "Sync already running for this user",
+        summary: null,
+      });
+      return { status: "locked" as const, runId: run.id };
+    }
+
+    const processedAccounts = await getUserAccountCount(options.userId);
+
+    if (options.scope === "leads") {
+      const leads = await syncUserLeadsMetrics(options.userId, options.token);
+      const monitoring = await syncUserPerformanceMonitoring(options.userId, options.token);
+      const summary = { leads, monitoring };
+      await finalizeSyncRun(run.id, "completed", {
+        startedAt: run.startedAt,
+        processedAccounts,
+        failedAccounts: 0,
+        errorMessage: null,
+        summary,
+      });
+      return { status: "completed" as const, runId: run.id, summary };
+    }
+
+    const summary = await syncUserAllMetrics(options.userId, options.token);
+    await finalizeSyncRun(run.id, "completed", {
+      startedAt: run.startedAt,
+      processedAccounts,
+      failedAccounts: 0,
+      errorMessage: null,
+      summary,
+    });
+    return { status: "completed" as const, runId: run.id, summary };
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unknown sync error";
+    await finalizeSyncRun(run.id, "error", {
+      startedAt: run.startedAt,
+      processedAccounts: 0,
+      failedAccounts: 1,
+      errorMessage: message,
+      summary: null,
+    });
+    throw err;
+  } finally {
+    if (lockAcquired) {
+      await releaseSyncLock(options.userId, run.id);
+    }
+  }
+}
+
 export async function syncAllDashboardMetrics() {
   const { data: connections, error } = await supabaseAdmin
     .from("facebook_connections")
@@ -2842,8 +2992,8 @@ export async function syncAllDashboardMetrics() {
     throw new Error(error.message);
   }
 
-  const usdRates = await fetchUsdRates();
   const results: DashboardSyncSummary[] = [];
+  const locked: string[] = [];
   const failures: Array<{ userId: string; error: string }> = [];
 
   for (const connection of connections || []) {
@@ -2851,7 +3001,17 @@ export async function syncAllDashboardMetrics() {
     const token = connection.access_token as string;
 
     try {
-      const summary = await syncUserAllMetrics(userId, token, usdRates);
+      const run = await runUserMetricsSyncWithRuntime({
+        userId,
+        token,
+        triggerSource: "cron",
+        scope: "all",
+      });
+      if (run.status === "locked") {
+        locked.push(userId);
+        continue;
+      }
+      const summary = run.summary as UserSyncSummary;
       results.push(summary.dashboard);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Unknown sync error";
@@ -2860,5 +3020,5 @@ export async function syncAllDashboardMetrics() {
     }
   }
 
-  return { processed: results.length, failed: failures.length, results, failures };
+  return { processed: results.length, failed: failures.length, locked: locked.length, results, failures, lockedUsers: locked };
 }
