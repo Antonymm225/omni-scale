@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { localizePublicPath, readCookie, TIMEZONE_COOKIE } from "../../lib/locale";
 import { useLocale } from "../../providers/LocaleProvider";
@@ -15,7 +15,7 @@ export default function SignUp() {
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const passwordRef = useRef<HTMLInputElement | null>(null);
   const [emailSent, setEmailSent] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -26,6 +26,18 @@ export default function SignUp() {
     setError(null);
 
     try {
+      const password = (passwordRef.current?.value || "").trim();
+      const passwordPattern = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).{8,}$/;
+      if (!passwordPattern.test(password)) {
+        setError(
+          isEn
+            ? "Password must be at least 8 characters and include uppercase, lowercase, and a number."
+            : "La contrasena debe tener minimo 8 caracteres e incluir mayuscula, minuscula y numero."
+        );
+        setLoading(false);
+        return;
+      }
+
       const baseUrl =
         process.env.NEXT_PUBLIC_SITE_URL ||
         (typeof window !== "undefined" ? window.location.origin : "");
@@ -46,8 +58,10 @@ export default function SignUp() {
 
       if (signupError) throw signupError;
       setEmailSent(true);
+      if (passwordRef.current) passwordRef.current.value = "";
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : isEn ? "Signup failed." : "No se pudo completar el registro.");
+      if (passwordRef.current) passwordRef.current.value = "";
     } finally {
       setLoading(false);
     }
@@ -214,14 +228,14 @@ export default function SignUp() {
                 placeholder={isEn ? "Create your password" : "Crea una contrasena"}
                 required
                 minLength={8}
-                pattern="^(?=.*[A-Za-z])(?=.*\\d)[A-Za-z\\d@$!%*?&]{8,}$"
                 title={
                   isEn
-                    ? "At least 8 characters, including one letter and one number."
-                    : "Debe tener al menos 8 caracteres, incluir una letra y un numero."
+                    ? "At least 8 characters, including uppercase, lowercase and one number."
+                    : "Minimo 8 caracteres, incluyendo mayuscula, minuscula y un numero."
                 }
-                value={password}
-                onChange={(event) => setPassword(event.target.value)}
+                ref={passwordRef}
+                autoComplete="new-password"
+                spellCheck={false}
                 className={`mt-1 w-full rounded-lg border px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 ${
                   isDark
                     ? "border-slate-600 text-slate-100 placeholder:text-slate-400 focus:ring-slate-400"
@@ -230,8 +244,8 @@ export default function SignUp() {
               />
               <p className={`mt-1 text-xs ${isDark ? "text-slate-400" : "text-slate-400"}`}>
                 {isEn
-                  ? "Minimum 8 characters, at least one letter and one number."
-                  : "Minimo 8 caracteres, al menos una letra y un numero."}
+                  ? "Minimum 8 characters, at least one uppercase, one lowercase and one number."
+                  : "Minimo 8 caracteres, al menos una mayuscula, una minuscula y un numero."}
               </p>
             </div>
 

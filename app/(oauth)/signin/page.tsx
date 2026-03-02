@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabaseClient";
 import { localizePublicPath } from "../../lib/locale";
@@ -16,7 +16,7 @@ export default function SignIn() {
   const isDark = theme === "dark";
 
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const passwordRef = useRef<HTMLInputElement | null>(null);
   const [errorMessage, setErrorMessage] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
@@ -24,6 +24,7 @@ export default function SignIn() {
     e.preventDefault();
     setErrorMessage("");
     setIsLoading(true);
+    const password = passwordRef.current?.value || "";
 
     const { error } = await supabase.auth.signInWithPassword({
       email,
@@ -32,10 +33,12 @@ export default function SignIn() {
 
     if (error) {
       setErrorMessage(error.message);
+      if (passwordRef.current) passwordRef.current.value = "";
       setIsLoading(false);
       return;
     }
 
+    if (passwordRef.current) passwordRef.current.value = "";
     router.replace("/setup");
   };
 
@@ -162,9 +165,10 @@ export default function SignIn() {
               <input
                 type="password"
                 placeholder={isEn ? "Password" : "Contrasena"}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                ref={passwordRef}
                 required
+                autoComplete="current-password"
+                spellCheck={false}
                 className={`mt-1 w-full border rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 ${
                   isDark
                     ? "border-slate-600 text-slate-100 placeholder:text-slate-400 focus:ring-slate-400"
