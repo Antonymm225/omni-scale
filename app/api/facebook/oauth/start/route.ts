@@ -22,6 +22,9 @@ export async function GET(request: Request) {
     "ads_read",
     "business_management",
     "pages_read_engagement",
+    "pages_manage_engagement",
+    "pages_manage_metadata",
+    "pages_messaging",
   ].join(",");
 
   const facebookAuthUrl = new URL("https://www.facebook.com/v23.0/dialog/oauth");
