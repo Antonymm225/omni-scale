@@ -20,6 +20,12 @@ type PageRow = {
   page_access_token: string | null;
 };
 
+type PageTokenRow = {
+  user_id: string;
+  facebook_page_id: string;
+  page_access_token: string | null;
+};
+
 type CommentRow = {
   id?: string;
   message?: string;
@@ -114,6 +120,15 @@ async function getPageToken(userId: string, facebookPageId: string) {
     .maybeSingle();
   if (error) throw new Error(error.message);
   return (data || null) as PageRow | null;
+}
+
+async function getPageTokensByFacebookPageId(facebookPageId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("facebook_pages")
+    .select("user_id,facebook_page_id,page_access_token")
+    .eq("facebook_page_id", facebookPageId);
+  if (error) throw new Error(error.message);
+  return (data || []) as PageTokenRow[];
 }
 
 async function getCursor(userId: string, facebookPageId: string) {
@@ -279,6 +294,107 @@ async function processPageRules(userId: string, pageId: string, rules: RuleRow[]
   return summary;
 }
 
+async function processSingleCommentForUser(
+  userId: string,
+  pageId: string,
+  commentId: string,
+  postId?: string | null
+) {
+  const summary: AutomationSummary = {
+    processedComments: 0,
+    matchedComments: 0,
+    publicRepliesSent: 0,
+    dmSent: 0,
+    dmFailed: 0,
+  };
+
+  const page = await getPageToken(userId, pageId);
+  if (!page?.page_access_token) {
+    throw new Error(`No page access token for page ${pageId}. Reconecta Facebook para refrescar tokens.`);
+  }
+
+  const rules = await getActiveRulesForUser(userId);
+  const pageRules = rules.filter((rule) => rule.facebook_page_id === pageId);
+  if (pageRules.length === 0) return summary;
+
+  const api = initFacebookApi(page.page_access_token);
+  const sortedRules = [...pageRules].sort((a, b) => b.keyword_normalized.length - a.keyword_normalized.length);
+
+  let comment: CommentRow;
+  try {
+    comment = (await api.call("GET", [commentId], {
+      fields: "id,message,created_time,from{id,name},parent{id}",
+    })) as CommentRow;
+  } catch (err) {
+    throw new Error(readFacebookError(err, "No se pudo leer comentario de Facebook"));
+  }
+
+  const message = comment.message || "";
+  if (!comment.id || !message.trim()) return summary;
+  if (comment.parent?.id) return summary;
+  if (comment.from?.id && comment.from.id === pageId) return summary;
+
+  summary.processedComments += 1;
+
+  const matchedRule = sortedRules.find((rule) => keywordMatched(message, rule.keyword_normalized));
+  if (!matchedRule) return summary;
+
+  const skip = await alreadyProcessed(userId, matchedRule.id, comment.id);
+  if (skip) return summary;
+
+  summary.matchedComments += 1;
+
+  let publicReplySent = false;
+  let publicReplyCommentId: string | null = null;
+  let dmSent = false;
+  let dmError: string | null = null;
+
+  try {
+    const replyPayload = (await api.call("POST", [comment.id, "comments"], {
+      message: matchedRule.reply_message,
+    })) as { id?: string; error?: { message?: string } };
+    if (replyPayload.error?.message) throw new Error(replyPayload.error.message);
+    publicReplySent = true;
+    publicReplyCommentId = replyPayload.id || null;
+    summary.publicRepliesSent += 1;
+  } catch (err) {
+    dmError = readFacebookError(err, "No se pudo enviar respuesta publica");
+  }
+
+  if (matchedRule.send_dm && matchedRule.dm_message?.trim()) {
+    try {
+      const dmPayload = (await api.call("POST", [comment.id, "private_replies"], {
+        message: matchedRule.dm_message,
+      })) as { error?: { message?: string } };
+      if (dmPayload.error?.message) throw new Error(dmPayload.error.message);
+      dmSent = true;
+      summary.dmSent += 1;
+    } catch (err) {
+      dmError = readFacebookError(err, "No se pudo enviar DM");
+      summary.dmFailed += 1;
+    }
+  }
+
+  await insertEvent({
+    user_id: userId,
+    rule_id: matchedRule.id,
+    facebook_page_id: pageId,
+    facebook_post_id: postId || null,
+    facebook_comment_id: comment.id,
+    comment_message: message,
+    matched_keyword: matchedRule.keyword,
+    public_reply_sent: publicReplySent,
+    public_reply_comment_id: publicReplyCommentId,
+    dm_sent: dmSent,
+    dm_error: dmError,
+    processed_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
+  });
+
+  await setCursor(userId, pageId, new Date().toISOString());
+  return summary;
+}
+
 export async function runCommentAutomationForUser(userId: string) {
   const rules = await getActiveRulesForUser(userId);
   const rulesByPage = new Map<string, RuleRow[]>();
@@ -349,3 +465,38 @@ export async function runCommentAutomationForAllUsers() {
   };
 }
 
+export async function processIncomingCommentForPage(
+  facebookPageId: string,
+  commentId: string,
+  postId?: string | null
+) {
+  const pageTokens = await getPageTokensByFacebookPageId(facebookPageId);
+  const results: Array<Record<string, unknown>> = [];
+  const failures: Array<{ userId: string; error: string }> = [];
+
+  for (const pageRow of pageTokens) {
+    try {
+      const summary = await processSingleCommentForUser(
+        pageRow.user_id,
+        facebookPageId,
+        commentId,
+        postId || null
+      );
+      results.push({ userId: pageRow.user_id, ...summary });
+    } catch (err) {
+      failures.push({
+        userId: pageRow.user_id,
+        error: err instanceof Error ? err.message : "Unknown error",
+      });
+    }
+  }
+
+  return {
+    pageId: facebookPageId,
+    commentId,
+    processedUsers: results.length,
+    failedUsers: failures.length,
+    results,
+    failures,
+  };
+}

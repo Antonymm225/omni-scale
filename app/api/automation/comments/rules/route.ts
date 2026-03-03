@@ -20,7 +20,11 @@ export async function GET() {
     } = await supabaseServer.auth.getUser();
     if (userError || !user) return jsonUtf8({ error: "Sesion invalida" }, { status: 401 });
 
-    const [{ data: rules, error: rulesError }, { data: pages, error: pagesError }] = await Promise.all([
+    const [
+      { data: rules, error: rulesError },
+      { data: pages, error: pagesError },
+      { data: events, error: eventsError },
+    ] = await Promise.all([
       supabaseAdmin
         .from("comment_automation_rules")
         .select("id,facebook_page_id,keyword,reply_message,send_dm,dm_message,is_active,created_at")
@@ -31,12 +35,21 @@ export async function GET() {
         .select("facebook_page_id,name")
         .eq("user_id", user.id)
         .order("name", { ascending: true }),
+      supabaseAdmin
+        .from("comment_automation_events")
+        .select(
+          "id,rule_id,facebook_page_id,facebook_comment_id,comment_message,matched_keyword,public_reply_sent,dm_sent,dm_error,processed_at"
+        )
+        .eq("user_id", user.id)
+        .order("processed_at", { ascending: false })
+        .limit(50),
     ]);
 
     if (rulesError) throw new Error(rulesError.message);
     if (pagesError) throw new Error(pagesError.message);
+    if (eventsError) throw new Error(eventsError.message);
 
-    return jsonUtf8({ rules: rules || [], pages: pages || [] });
+    return jsonUtf8({ rules: rules || [], pages: pages || [], events: events || [] });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "No se pudo cargar reglas";
     return jsonUtf8({ error: message }, { status: 500 });

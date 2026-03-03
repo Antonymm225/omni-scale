@@ -28,12 +28,26 @@ type RunSummary = {
   dmFailed: number;
 };
 
+type EventItem = {
+  id: string;
+  rule_id: string;
+  facebook_page_id: string;
+  facebook_comment_id: string;
+  comment_message: string | null;
+  matched_keyword: string;
+  public_reply_sent: boolean;
+  dm_sent: boolean;
+  dm_error: string | null;
+  processed_at: string;
+};
+
 export default function Page() {
   const { locale } = useLocale();
   const isEn = locale === "en";
 
   const [rules, setRules] = useState<Rule[]>([]);
   const [pages, setPages] = useState<PageItem[]>([]);
+  const [events, setEvents] = useState<EventItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [running, setRunning] = useState(false);
@@ -47,18 +61,31 @@ export default function Page() {
   const [sendDm, setSendDm] = useState(false);
   const [dmMessage, setDmMessage] = useState("");
 
-  const pagesMap = useMemo(() => new Map(pages.map((page) => [page.facebook_page_id, page.name || page.facebook_page_id])), [pages]);
+  const pagesMap = useMemo(
+    () => new Map(pages.map((page) => [page.facebook_page_id, page.name || page.facebook_page_id])),
+    [pages]
+  );
 
   async function loadData() {
     setLoading(true);
     setError(null);
     try {
       const response = await fetch("/api/automation/comments/rules", { cache: "no-store" });
-      const payload = (await response.json()) as { rules?: Rule[]; pages?: PageItem[]; error?: string };
-      if (!response.ok) throw new Error(payload.error || (isEn ? "Could not load comments automation." : "No se pudo cargar la automatizacion."));
+      const payload = (await response.json()) as {
+        rules?: Rule[];
+        pages?: PageItem[];
+        events?: EventItem[];
+        error?: string;
+      };
+      if (!response.ok) {
+        throw new Error(
+          payload.error || (isEn ? "Could not load comments automation." : "No se pudo cargar la automatizacion.")
+        );
+      }
 
       setRules(payload.rules || []);
       setPages(payload.pages || []);
+      setEvents(payload.events || []);
       if (!selectedPageId && (payload.pages || []).length > 0) {
         setSelectedPageId((payload.pages || [])[0].facebook_page_id);
       }
@@ -146,6 +173,7 @@ export default function Page() {
       if (!response.ok) throw new Error(payload.error || (isEn ? "Could not run automation." : "No se pudo ejecutar la automatizacion."));
       setRunSummary(payload.summary || null);
       setNotice(isEn ? "Automation executed." : "Automatizacion ejecutada.");
+      await loadData();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : isEn ? "Could not run automation." : "No se pudo ejecutar la automatizacion.");
     } finally {
@@ -159,7 +187,9 @@ export default function Page() {
         <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-semibold text-[#111827] sm:text-4xl">{isEn ? "Comments Automation" : "Automatización de Comentarios"}</h1>
+              <h1 className="text-3xl font-semibold text-[#111827] sm:text-4xl">
+                {isEn ? "Comments Automation" : "Automatizacion de comentarios"}
+              </h1>
               <p className="mt-2 text-sm text-slate-600">
                 {isEn
                   ? "Create keyword rules to auto-reply on comments and optionally send DM."
@@ -181,10 +211,10 @@ export default function Page() {
 
           {runSummary ? (
             <div className="mt-4 grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-              <Metric label={isEn ? "Pages" : "Páginas"} value={runSummary.pagesProcessed} />
+              <Metric label={isEn ? "Pages" : "Paginas"} value={runSummary.pagesProcessed} />
               <Metric label={isEn ? "Comments" : "Comentarios"} value={runSummary.processedComments} />
               <Metric label={isEn ? "Matched" : "Coincidencias"} value={runSummary.matchedComments} />
-              <Metric label={isEn ? "Public replies" : "Respuestas públicas"} value={runSummary.publicRepliesSent} />
+              <Metric label={isEn ? "Public replies" : "Respuestas publicas"} value={runSummary.publicRepliesSent} />
               <Metric label="DM" value={runSummary.dmSent} />
               <Metric label={isEn ? "DM failed" : "DM fallidos"} value={runSummary.dmFailed} />
             </div>
@@ -196,19 +226,19 @@ export default function Page() {
           <p className="mt-1 text-sm text-slate-600">
             {isEn
               ? "1) Choose page · 2) Define keyword · 3) Write comment reply · 4) Optional DM · 5) Publish"
-              : "1) Elige página · 2) Define keyword · 3) Escribe respuesta · 4) DM opcional · 5) Publicar"}
+              : "1) Elige pagina · 2) Define keyword · 3) Escribe respuesta · 4) DM opcional · 5) Publicar"}
           </p>
 
           <form onSubmit={handleCreateRule} className="mt-6 grid gap-4">
             <label className="grid gap-1.5">
-              <span className="text-sm font-medium text-slate-700">{isEn ? "Page" : "Página"}</span>
+              <span className="text-sm font-medium text-slate-700">{isEn ? "Page" : "Pagina"}</span>
               <select
                 value={selectedPageId}
                 onChange={(event) => setSelectedPageId(event.target.value)}
                 className="rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none ring-[#1D293D] focus:ring-2"
                 required
               >
-                <option value="">{isEn ? "Select page..." : "Selecciona página..."}</option>
+                <option value="">{isEn ? "Select page..." : "Selecciona pagina..."}</option>
                 {pages.map((page) => (
                   <option key={page.facebook_page_id} value={page.facebook_page_id}>
                     {page.name || page.facebook_page_id}
@@ -218,7 +248,7 @@ export default function Page() {
             </label>
 
             <label className="grid gap-1.5">
-              <span className="text-sm font-medium text-slate-700">{isEn ? "Keyword" : "Keyword"}</span>
+              <span className="text-sm font-medium text-slate-700">Keyword</span>
               <input
                 value={keyword}
                 onChange={(event) => setKeyword(event.target.value)}
@@ -229,12 +259,12 @@ export default function Page() {
             </label>
 
             <label className="grid gap-1.5">
-              <span className="text-sm font-medium text-slate-700">{isEn ? "Public reply" : "Respuesta pública"}</span>
+              <span className="text-sm font-medium text-slate-700">{isEn ? "Public reply" : "Respuesta publica"}</span>
               <textarea
                 value={replyMessage}
                 onChange={(event) => setReplyMessage(event.target.value)}
                 rows={3}
-                placeholder={isEn ? "Thanks! We just sent details." : "¡Gracias! Te enviamos los detalles."}
+                placeholder={isEn ? "Thanks! We just sent details." : "Gracias! Te enviamos los detalles."}
                 className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-800 outline-none ring-[#1D293D] focus:ring-2"
                 required
               />
@@ -242,7 +272,7 @@ export default function Page() {
 
             <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
               <input type="checkbox" checked={sendDm} onChange={(event) => setSendDm(event.target.checked)} />
-              {isEn ? "Send DM too (if available)" : "Enviar DM también (si está disponible)"}
+              {isEn ? "Send DM too (if available)" : "Enviar DM tambien (si esta disponible)"}
             </label>
 
             {sendDm ? (
@@ -252,7 +282,7 @@ export default function Page() {
                   value={dmMessage}
                   onChange={(event) => setDmMessage(event.target.value)}
                   rows={3}
-                  placeholder={isEn ? "Hi! Here is the information..." : "¡Hola! Aquí tienes la información..."}
+                  placeholder={isEn ? "Hi! Here is the information..." : "Hola! Aqui tienes la informacion..."}
                   className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-800 outline-none ring-[#1D293D] focus:ring-2"
                   required
                 />
@@ -276,7 +306,7 @@ export default function Page() {
           {loading ? (
             <p className="mt-3 text-sm text-slate-600">{isEn ? "Loading..." : "Cargando..."}</p>
           ) : rules.length === 0 ? (
-            <p className="mt-3 text-sm text-slate-600">{isEn ? "No rules yet." : "Aún no hay reglas."}</p>
+            <p className="mt-3 text-sm text-slate-600">{isEn ? "No rules yet." : "Aun no hay reglas."}</p>
           ) : (
             <div className="mt-4 space-y-3">
               {rules.map((rule) => (
@@ -287,7 +317,7 @@ export default function Page() {
                         {pagesMap.get(rule.facebook_page_id) || rule.facebook_page_id}
                       </p>
                       <p className="text-sm text-slate-700">
-                        <span className="font-medium">{isEn ? "Keyword:" : "Keyword:"}</span> {rule.keyword}
+                        <span className="font-medium">Keyword:</span> {rule.keyword}
                       </p>
                       <p className="text-sm text-slate-700">
                         <span className="font-medium">{isEn ? "Reply:" : "Respuesta:"}</span> {rule.reply_message}
@@ -322,6 +352,58 @@ export default function Page() {
             </div>
           )}
         </section>
+
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+          <h2 className="text-xl font-semibold text-[#111827]">
+            {isEn ? "Processed comments" : "Comentarios procesados"}
+          </h2>
+          <p className="mt-1 text-sm text-slate-600">
+            {isEn ? "Latest comments matched by your rules." : "Ultimos comentarios detectados por tus reglas."}
+          </p>
+
+          {events.length === 0 ? (
+            <p className="mt-3 text-sm text-slate-600">
+              {isEn ? "No processed comments yet." : "Aun no hay comentarios procesados."}
+            </p>
+          ) : (
+            <div className="mt-4 overflow-x-auto">
+              <table className="min-w-full text-left text-sm">
+                <thead>
+                  <tr className="border-b border-slate-200 text-xs uppercase tracking-wide text-slate-500">
+                    <th className="px-2 py-2">{isEn ? "Page" : "Pagina"}</th>
+                    <th className="px-2 py-2">Keyword</th>
+                    <th className="px-2 py-2">{isEn ? "Comment" : "Comentario"}</th>
+                    <th className="px-2 py-2">{isEn ? "Public reply" : "Respuesta publica"}</th>
+                    <th className="px-2 py-2">DM</th>
+                    <th className="px-2 py-2">{isEn ? "Status" : "Estado"}</th>
+                    <th className="px-2 py-2">{isEn ? "Time" : "Hora"}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {events.map((event) => (
+                    <tr key={event.id} className="border-b border-slate-100 align-top text-slate-700">
+                      <td className="px-2 py-2">{pagesMap.get(event.facebook_page_id) || event.facebook_page_id}</td>
+                      <td className="px-2 py-2">{event.matched_keyword}</td>
+                      <td className="max-w-[320px] truncate px-2 py-2" title={event.comment_message || ""}>
+                        {event.comment_message || "-"}
+                      </td>
+                      <td className="px-2 py-2">{event.public_reply_sent ? "OK" : "No"}</td>
+                      <td className="px-2 py-2">{event.dm_sent ? "OK" : "-"}</td>
+                      <td className="px-2 py-2">
+                        {event.dm_error ? (
+                          <span className="text-rose-600">{event.dm_error}</span>
+                        ) : (
+                          <span className="text-emerald-700">{isEn ? "Processed" : "Procesado"}</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-2">{new Date(event.processed_at).toLocaleString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </section>
       </div>
     </main>
   );
@@ -335,4 +417,3 @@ function Metric({ label, value }: { label: string; value: number }) {
     </div>
   );
 }
-

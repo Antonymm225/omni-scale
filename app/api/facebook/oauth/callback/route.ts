@@ -60,6 +60,25 @@ async function graphFetchPaginated<T>(
   return rows;
 }
 
+async function subscribePageToWebhook(pageId: string, pageAccessToken: string) {
+  const subscribeUrl = `${GRAPH_BASE_URL}/${pageId}/subscribed_apps`;
+  const response = await fetch(subscribeUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded; charset=utf-8",
+    },
+    body: new URLSearchParams({
+      subscribed_fields: "feed",
+      access_token: pageAccessToken,
+    }).toString(),
+    cache: "no-store",
+  });
+  const payload = (await response.json()) as { success?: boolean; error?: { message?: string } };
+  if (!response.ok || payload.error?.message) {
+    throw new Error(payload.error?.message || "No se pudo suscribir la pagina a webhooks");
+  }
+}
+
 export async function GET(request: NextRequest) {
   try {
     const appId = process.env.FACEBOOK_APP_ID;
@@ -239,6 +258,19 @@ export async function GET(request: NextRequest) {
         })),
         { onConflict: "user_id,facebook_page_id" }
       );
+
+      for (const page of pages) {
+        if (!page.id || !page.access_token) continue;
+        try {
+          await subscribePageToWebhook(page.id, page.access_token);
+        } catch (error) {
+          console.warn(
+            `[facebook-oauth] page webhook subscription failed for page ${page.id}: ${
+              error instanceof Error ? error.message : "unknown error"
+            }`
+          );
+        }
+      }
     }
 
     const instagramRows: Array<{
