@@ -25,8 +25,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       is_active?: boolean;
       keyword?: string;
       reply_message?: string;
-      send_dm?: boolean;
-      dm_message?: string | null;
     };
 
     const updates: Record<string, unknown> = {
@@ -40,9 +38,6 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (typeof body.reply_message === "string" && body.reply_message.trim()) {
       updates.reply_message = body.reply_message.trim();
     }
-    if (typeof body.send_dm === "boolean") updates.send_dm = body.send_dm;
-    if (typeof body.dm_message === "string") updates.dm_message = body.dm_message.trim() || null;
-
     if (Object.keys(updates).length === 1) {
       return jsonUtf8({ error: "No hay campos para actualizar" }, { status: 400 });
     }

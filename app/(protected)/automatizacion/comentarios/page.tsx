@@ -58,8 +58,6 @@ export default function Page() {
   const [selectedPageId, setSelectedPageId] = useState("");
   const [keyword, setKeyword] = useState("");
   const [replyMessage, setReplyMessage] = useState("");
-  const [sendDm, setSendDm] = useState(false);
-  const [dmMessage, setDmMessage] = useState("");
 
   const pagesMap = useMemo(
     () => new Map(pages.map((page) => [page.facebook_page_id, page.name || page.facebook_page_id])),
@@ -115,8 +113,8 @@ export default function Page() {
           facebook_page_id: selectedPageId,
           keyword,
           reply_message: replyMessage,
-          send_dm: sendDm,
-          dm_message: sendDm ? dmMessage : null,
+          send_dm: false,
+          dm_message: null,
         }),
       });
       const payload = (await response.json()) as { error?: string };
@@ -124,8 +122,6 @@ export default function Page() {
 
       setKeyword("");
       setReplyMessage("");
-      setSendDm(false);
-      setDmMessage("");
       setNotice(isEn ? "Rule created successfully." : "Regla creada correctamente.");
       await loadData();
     } catch (err: unknown) {
@@ -225,8 +221,8 @@ export default function Page() {
           <h2 className="text-xl font-semibold text-[#111827]">{isEn ? "New Rule" : "Nueva regla"}</h2>
           <p className="mt-1 text-sm text-slate-600">
             {isEn
-              ? "1) Choose page · 2) Define keyword · 3) Write comment reply · 4) Optional DM · 5) Publish"
-              : "1) Elige pagina · 2) Define keyword · 3) Escribe respuesta · 4) DM opcional · 5) Publicar"}
+              ? "1) Choose page · 2) Define keyword · 3) Write comment reply · 4) Publish"
+              : "1) Elige pagina · 2) Define keyword · 3) Escribe respuesta · 4) Publicar"}
           </p>
 
           <form onSubmit={handleCreateRule} className="mt-6 grid gap-4">
@@ -269,25 +265,6 @@ export default function Page() {
                 required
               />
             </label>
-
-            <label className="inline-flex items-center gap-2 text-sm font-medium text-slate-700">
-              <input type="checkbox" checked={sendDm} onChange={(event) => setSendDm(event.target.checked)} />
-              {isEn ? "Send DM too (if available)" : "Enviar DM tambien (si esta disponible)"}
-            </label>
-
-            {sendDm ? (
-              <label className="grid gap-1.5">
-                <span className="text-sm font-medium text-slate-700">DM</span>
-                <textarea
-                  value={dmMessage}
-                  onChange={(event) => setDmMessage(event.target.value)}
-                  rows={3}
-                  placeholder={isEn ? "Hi! Here is the information..." : "Hola! Aqui tienes la informacion..."}
-                  className="rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-800 outline-none ring-[#1D293D] focus:ring-2"
-                  required
-                />
-              </label>
-            ) : null}
 
             <div className="flex justify-end">
               <button

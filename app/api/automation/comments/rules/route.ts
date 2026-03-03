@@ -69,23 +69,17 @@ export async function POST(request: NextRequest) {
       facebook_page_id?: string;
       keyword?: string;
       reply_message?: string;
-      send_dm?: boolean;
-      dm_message?: string | null;
     };
 
     const pageId = (body.facebook_page_id || "").trim();
     const keyword = (body.keyword || "").trim();
     const replyMessage = (body.reply_message || "").trim();
-    const sendDm = Boolean(body.send_dm);
-    const dmMessage = (body.dm_message || "").trim();
+    const sendDm = false;
+    const dmMessage = "";
 
     if (!pageId || !keyword || !replyMessage) {
       return jsonUtf8({ error: "facebook_page_id, keyword y reply_message son requeridos" }, { status: 400 });
     }
-    if (sendDm && !dmMessage) {
-      return jsonUtf8({ error: "El mensaje DM es requerido cuando DM esta activo" }, { status: 400 });
-    }
-
     const { data: page, error: pageError } = await supabaseAdmin
       .from("facebook_pages")
       .select("facebook_page_id")

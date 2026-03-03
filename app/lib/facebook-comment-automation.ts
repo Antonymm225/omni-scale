@@ -42,6 +42,8 @@ type AutomationSummary = {
   dmFailed: number;
 };
 
+const ENABLE_COMMENT_DM = false;
+
 function normalizeText(value: string) {
   return value
     .normalize("NFD")
@@ -258,7 +260,7 @@ async function processPageRules(userId: string, pageId: string, rules: RuleRow[]
         dmError = readFacebookError(err, "No se pudo enviar respuesta publica");
       }
 
-      if (matchedRule.send_dm && matchedRule.dm_message?.trim()) {
+      if (ENABLE_COMMENT_DM && matchedRule.send_dm && matchedRule.dm_message?.trim()) {
         try {
           const dmPayload = (await api.call("POST", [commentId, "private_replies"], {
             message: matchedRule.dm_message,
@@ -361,7 +363,7 @@ async function processSingleCommentForUser(
     dmError = readFacebookError(err, "No se pudo enviar respuesta publica");
   }
 
-  if (matchedRule.send_dm && matchedRule.dm_message?.trim()) {
+  if (ENABLE_COMMENT_DM && matchedRule.send_dm && matchedRule.dm_message?.trim()) {
     try {
       const dmPayload = (await api.call("POST", [comment.id, "private_replies"], {
         message: matchedRule.dm_message,
