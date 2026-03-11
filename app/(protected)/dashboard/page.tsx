@@ -12,8 +12,8 @@ export default function DashboardPage() {
       title="Dashboard"
       subtitle={
         isEn
-          ? "Consolidated metrics for all campaigns, auto-updated every 10 minutes."
-          : "Metricas consolidadas de todas las campanas, actualizadas automaticamente cada 10 minutos."
+          ? "Consolidated metrics for all campaigns, auto-updated every 6 hours."
+          : "Metricas consolidadas de todas las campanas, actualizadas automaticamente cada 6 horas."
       }
       resultTerm={isEn ? "Results" : "Resultados"}
       resultSubtitle={isEn ? "Global account results" : "Resultados globales de la cuenta"}

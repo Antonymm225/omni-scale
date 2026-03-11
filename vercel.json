@@ -2,7 +2,7 @@
   "crons": [
     {
       "path": "/api/cron/facebook-metrics",
-      "schedule": "*/10 * * * *"
+      "schedule": "0 */6 * * *"
     },
     {
       "path": "/api/cron/facebook-comment-automation",
